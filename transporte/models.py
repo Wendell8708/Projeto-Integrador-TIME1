@@ -22,7 +22,7 @@ class Transporte(models.Model):
 
     data_cadastro = models.DateTimeField(auto_now_add=True)
 
-    def _str_(self):
+    def __str__(self):
         return f'Transporte #{self.id} - {self.origem} → {self.destino}'
 
 
@@ -35,5 +35,5 @@ class Carga(models.Model):
 
     data_cadastro = models.DateTimeField(auto_now_add=True)
 
-    def _str_(self):
+    def __str__(self):
         return f'{self.fruta.nome} - Lote {self.lote} ({self.quantidade_kg}kg)'

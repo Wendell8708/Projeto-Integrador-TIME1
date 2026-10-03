@@ -14,7 +14,7 @@ class Local(models.Model):
     situacao = models.BooleanField(default=True)
     data_cadastro = models.DateTimeField(auto_now_add=True)
 
-    def _str_(self):
+    def __str__(self):
         return f'{self.nome} ({self.get_tipo_local_display()})'
 
 
@@ -24,7 +24,7 @@ class Veiculo(models.Model):
     situacao = models.BooleanField(default=True)
     data_cadastro = models.DateTimeField(auto_now_add=True)
 
-    def _str_(self):
+    def __str__(self):
         return self.placa
 
 
@@ -34,7 +34,7 @@ class Fruta(models.Model):
     situacao = models.BooleanField(default=True)
     data_cadastro = models.DateTimeField(auto_now_add=True)
 
-    def _str_(self):
+    def __str__(self):
         return self.nome
 
 
@@ -48,5 +48,5 @@ class ConfiguracaoLimite(models.Model):
     data_fim = models.DateTimeField(null=True, blank=True)
     situacao = models.BooleanField(default=True)
 
-    def _str_(self):
+    def __str__(self):
         return f'Limites de {self.fruta.nome}'
