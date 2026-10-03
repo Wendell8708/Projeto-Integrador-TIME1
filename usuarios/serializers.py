@@ -16,9 +16,9 @@ class UsuarioLogadoSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    def get_grupos(self, usuario):
+    def get_grupos(self, usuario) -> list[str]:
         return sorted(usuario.groups.values_list('name', flat=True))
 
-    def get_permissoes(self, usuario):
+    def get_permissoes(self, usuario) -> list[str]:
         # Ex.: ["iot.view_leitura", "transporte.add_transporte"]
         return sorted(usuario.get_all_permissions())

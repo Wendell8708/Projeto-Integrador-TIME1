@@ -58,4 +58,5 @@ class Command(BaseCommand):
             permissoes = list(obter_permissoes())
             grupo.permissions.set(permissoes)  # "set" substitui: mantem o grupo sempre igual a este arquivo
             situacao = 'criado' if criado else 'atualizado'
-            self.stdout.write(self.style.SUCCESS(f'Grupo {nome} {situacao} com {len(permissoes)} permissoes.'))
+            if options['verbosity'] > 0:
+                self.stdout.write(self.style.SUCCESS(f'Grupo {nome} {situacao} com {len(permissoes)} permissoes.'))
