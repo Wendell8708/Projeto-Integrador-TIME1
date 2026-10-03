@@ -1,3 +1,15 @@
-from django.shortcuts import render
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
-# Create your views here.
+from .serializers import UsuarioLogadoSerializer
+
+
+class MeView(APIView):
+    """GET /api/v1/auth/me/ -> dados, grupos e permissoes de quem esta logado."""
+
+    # Qualquer usuario autenticado pode ver os proprios dados.
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(UsuarioLogadoSerializer(request.user).data)
