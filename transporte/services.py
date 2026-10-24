@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from dominio.models import ConfiguracaoLimite
 
-from .models import Transporte
+from .models import Shipment
 
 
 class CargaIncompativel(Exception):
@@ -71,7 +71,7 @@ def transporte_ativo_para(dispositivo, instante):
     E assim que uma leitura "descobre" a que viagem pertence.
     """
     return (
-        Transporte.objects
+        Shipment.objects
         .filter(dispositivo=dispositivo, status='em_andamento', data_hora_inicio__lte=instante)
         .order_by('-data_hora_inicio')
         .first()
@@ -90,10 +90,10 @@ def resumo_do_transporte(transporte):
     # Import aqui dentro: alertas.services importa transporte.services (evita ciclo).
     from alertas.services import classificar_leitura
 
-    leituras = transporte.leituras()
+    leituras = transporte.readings.all()
     estatisticas = leituras.aggregate(
-        temperatura_media=Avg('temperatura'), temperatura_minima=Min('temperatura'), temperatura_maxima=Max('temperatura'),
-        umidade_media=Avg('umidade'), umidade_minima=Min('umidade'), umidade_maxima=Max('umidade'),
+        temperatura_media=Avg('temperature_c'), temperatura_minima=Min('temperature_c'), temperatura_maxima=Max('temperature_c'),
+        umidade_media=Avg('humidity_pct'), umidade_minima=Min('humidity_pct'), umidade_maxima=Max('humidity_pct'),
     )
     ultima = leituras.first()  # ordering padrao: mais recente primeiro
 
@@ -119,9 +119,9 @@ def resumo_do_transporte(transporte):
         'total_leituras': leituras.count(),
         'estatisticas': {chave: _numero(valor) for chave, valor in estatisticas.items()},
         'ultima_leitura': None if ultima is None else {
-            'temperatura': float(ultima.temperatura),
-            'umidade': float(ultima.umidade),
-            'medido_em': ultima.medido_em,
+            'temperatura': float(ultima.temperature_c),
+            'umidade': float(ultima.humidity_pct),
+            'medido_em': ultima.recorded_at,
         },
         'faixa_ideal': None if faixa is None else faixa.como_dict(),
         'aviso_faixa': erro_faixa,

@@ -5,6 +5,7 @@ from django.core.management import call_command
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
+from iot.services import registrar_leitura
 from piADS04.tests_utils import montar_cenario
 
 
@@ -40,8 +41,8 @@ class AutenticacaoTest(APITestCase):
         resposta = self.client.get('/api/v1/auth/me/', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(resposta.status_code, 200)
         self.assertEqual(resposta.data['grupos'], ['Visualizador'])
-        self.assertIn('transporte.view_transporte', resposta.data['permissoes'])
-        self.assertNotIn('transporte.add_transporte', resposta.data['permissoes'])
+        self.assertIn('transporte.view_shipment', resposta.data['permissoes'])
+        self.assertNotIn('transporte.add_shipment', resposta.data['permissoes'])
 
 
 class PermissoesPorGrupoTest(APITestCase):
@@ -98,19 +99,24 @@ class FluxoDaApiTest(APITestCase):
         self.client.force_authenticate(admin)
         self.client.post(f"/api/v1/transportes/{self.c['transporte'].id}/iniciar/")
 
-    def enviar_leitura(self, temperatura, minutos, origem_id=None):
-        dados = {
-            'dispositivo': self.c['dispositivo'].id,
-            'temperatura': temperatura, 'umidade': '85',
-            'medido_em': (timezone.now() + timedelta(minutes=minutos)).isoformat(),
-        }
-        if origem_id:
-            dados['origem_id'] = origem_id
-        return self.client.post('/api/v1/leituras/', dados)
+    def enviar_leitura(self, temperatura, minutos, sequence=None):
+        """Quem grava leituras e a placa (service), nao um usuario pela API."""
+        self.seq = getattr(self, 'seq', 0) + 1
+        return registrar_leitura(
+            device=self.c['dispositivo'], shipment=self.c['transporte'],
+            sequence=sequence if sequence is not None else self.seq,
+            recorded_at=timezone.now() + timedelta(minutes=minutos),
+            temperature_c=temperatura, humidity_pct='85',
+        )
+
+    def test_usuario_nao_grava_leitura_pela_api(self):
+        """POST em /leituras/ nao existe mais: leitura so entra pela placa."""
+        resposta = self.client.post('/api/v1/leituras/', {})
+        self.assertEqual(resposta.status_code, 405)
 
     def test_leituras_fora_da_faixa_geram_alerta_e_status(self):
-        self.assertEqual(self.enviar_leitura('14', 0).status_code, 201)
-        self.assertEqual(self.enviar_leitura('14', 1).status_code, 201)
+        self.enviar_leitura('14', 0)
+        self.enviar_leitura('14', 1)
 
         alertas = self.client.get(f"/api/v1/transportes/{self.c['transporte'].id}/alertas/").data
         self.assertEqual(len(alertas), 1)
@@ -126,9 +132,9 @@ class FluxoDaApiTest(APITestCase):
         historico = self.client.get(f"/api/v1/transportes/{self.c['transporte'].id}/leituras/").data
         self.assertEqual(historico['count'], 2)
 
-    def test_leitura_duplicada_por_origem_id_nao_cria_outra(self):
-        self.enviar_leitura('10', 0, origem_id=77)
-        self.enviar_leitura('10', 0, origem_id=77)
+    def test_leitura_reenviada_com_o_mesmo_sequence_nao_cria_outra(self):
+        self.enviar_leitura('10', 0, sequence=77)
+        self.enviar_leitura('10', 0, sequence=77)
         historico = self.client.get(f"/api/v1/transportes/{self.c['transporte'].id}/leituras/").data
         self.assertEqual(historico['count'], 1)
 
