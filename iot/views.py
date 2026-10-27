@@ -1,38 +1,33 @@
 from django_filters import rest_framework as filters
-from rest_framework import mixins, viewsets
+from rest_framework import viewsets
 
-from .models import Dispositivo, Leitura
-from .serializers import DispositivoSerializer, LeituraSerializer
+from .models import Device, Reading
+from .serializers import DeviceSerializer, ReadingSerializer
 
 
-class DispositivoViewSet(viewsets.ModelViewSet):
-    queryset = Dispositivo.objects.all()
-    serializer_class = DispositivoSerializer
+class DeviceViewSet(viewsets.ModelViewSet):
+    queryset = Device.objects.all()
+    serializer_class = DeviceSerializer
     filterset_fields = ['situacao']
 
 
-class LeituraFilter(filters.FilterSet):
-    # /leituras/?dispositivo=1&inicio=2026-10-01T00:00:00Z&fim=2026-10-02T00:00:00Z
-    inicio = filters.IsoDateTimeFilter(field_name='medido_em', lookup_expr='gte')
-    fim = filters.IsoDateTimeFilter(field_name='medido_em', lookup_expr='lte')
+class ReadingFilter(filters.FilterSet):
+    # /leituras/?device=1&shipment=3&inicio=2026-10-01T00:00:00Z&fim=2026-10-02T00:00:00Z
+    inicio = filters.IsoDateTimeFilter(field_name='recorded_at', lookup_expr='gte')
+    fim = filters.IsoDateTimeFilter(field_name='recorded_at', lookup_expr='lte')
 
     class Meta:
-        model = Leitura
-        fields = ['dispositivo']
+        model = Reading
+        fields = ['device', 'shipment']
 
 
-class LeituraViewSet(
-    mixins.CreateModelMixin,
-    mixins.ListModelMixin,
-    mixins.RetrieveModelMixin,
-    viewsets.GenericViewSet,
-):
+class ReadingViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    Leituras do sensor. So listar, ver e criar: uma medicao historica nao deve
-    ser editada nem apagada pela API.
+    Leituras do sensor: so consulta. Uma medicao historica nao se edita nem se
+    apaga pela API, e quem grava e a placa (rota de telemetria).
     """
 
-    queryset = Leitura.objects.select_related('dispositivo')
-    serializer_class = LeituraSerializer
-    filterset_class = LeituraFilter
-    ordering_fields = ['medido_em']
+    queryset = Reading.objects.select_related('device')
+    serializer_class = ReadingSerializer
+    filterset_class = ReadingFilter
+    ordering_fields = ['recorded_at']

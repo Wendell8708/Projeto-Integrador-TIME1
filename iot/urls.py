@@ -1,9 +1,9 @@
 from rest_framework.routers import SimpleRouter
 
-from .views import DispositivoViewSet, LeituraViewSet
+from .views import DeviceViewSet, ReadingViewSet
 
 router = SimpleRouter()
-router.register('dispositivos', DispositivoViewSet)
-router.register('leituras', LeituraViewSet)
+router.register('dispositivos', DeviceViewSet)
+router.register('leituras', ReadingViewSet)
 
 urlpatterns = router.urls

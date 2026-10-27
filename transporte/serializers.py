@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Carga, Transporte
+from .models import Carga, Shipment
 from .services import CargaIncompativel, faixa_ideal_de_frutas
 
 
@@ -31,11 +31,11 @@ class CargaSerializer(serializers.ModelSerializer):
         return dados
 
 
-class TransporteSerializer(serializers.ModelSerializer):
+class ShipmentSerializer(serializers.ModelSerializer):
     cargas = CargaSerializer(many=True, read_only=True)
 
     class Meta:
-        model = Transporte
+        model = Shipment
         fields = [
             'id', 'origem', 'destino', 'veiculo', 'dispositivo',
             'data_hora_inicio', 'data_hora_fim', 'status', 'data_cadastro', 'cargas',

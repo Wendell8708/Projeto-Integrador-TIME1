@@ -24,6 +24,14 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
 
+# Origens (com https://) que podem enviar formularios POST, como o login do /admin/.
+# Em producao: https://<nome>.onrender.com
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
+
+# Atras do proxy do Render, o Django recebe HTTP puro. Este cabecalho (que o proxy
+# define) avisa que o acesso original do usuario foi por HTTPS.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 
 # --- Apps ------------------------------------------------------------------
 
@@ -54,6 +62,9 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
 
     'django.middleware.security.SecurityMiddleware',
+    # Serve os arquivos estaticos (admin, Swagger) em producao, sem precisar de Nginx.
+    # Precisa vir logo depois do SecurityMiddleware.
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -134,6 +145,8 @@ DATABASES = {
         'PASSWORD': config('DB_PASSWORD'),
         'HOST': config('DB_HOST', default='localhost'),
         'PORT': config('DB_PORT', default='5432'),
+        # Local: 'prefer' (usa SSL se o servidor tiver). Neon/producao: DB_SSLMODE=require.
+        'OPTIONS': {'sslmode': config('DB_SSLMODE', default='prefer')},
     }
 }
 
@@ -166,3 +179,5 @@ USE_TZ = True
 # --- Arquivos estaticos ----------------------------------------------------
 
 STATIC_URL = 'static/'
+# Pasta onde o "collectstatic" junta os arquivos para o WhiteNoise servir (fica fora do Git).
+STATIC_ROOT = BASE_DIR / 'staticfiles'

@@ -3,23 +3,23 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from alertas.serializers import AlertaSerializer
-from iot.serializers import LeituraSerializer
-from iot.views import LeituraFilter
+from alertas.serializers import AlertSerializer
+from iot.serializers import ReadingSerializer
+from iot.views import ReadingFilter
 from usuarios.permissions import PodeAlterarModelo
 
-from .models import Carga, Transporte
-from .serializers import CargaSerializer, TransporteSerializer
+from .models import Carga, Shipment
+from .serializers import CargaSerializer, ShipmentSerializer
 from .services import resumo_do_transporte
 
 
-class TransporteViewSet(viewsets.ModelViewSet):
+class ShipmentViewSet(viewsets.ModelViewSet):
     queryset = (
-        Transporte.objects
+        Shipment.objects
         .select_related('origem', 'destino', 'veiculo', 'dispositivo')
         .prefetch_related('cargas__fruta')
     )
-    serializer_class = TransporteSerializer
+    serializer_class = ShipmentSerializer
     filterset_fields = ['status', 'veiculo', 'dispositivo', 'origem', 'destino']
     ordering_fields = ['data_hora_inicio', 'data_cadastro']
 
@@ -35,7 +35,7 @@ class TransporteViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Cadastre ao menos uma carga antes de iniciar.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Um dispositivo so pode estar em UMA viagem por vez; senao nao sabemos a quem a leitura pertence.
-        ocupado = Transporte.objects.filter(dispositivo=transporte.dispositivo, status='em_andamento').exists()
+        ocupado = Shipment.objects.filter(dispositivo=transporte.dispositivo, status='em_andamento').exists()
         if ocupado:
             return Response({'detail': 'Este dispositivo já está em outro transporte em andamento.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -62,9 +62,9 @@ class TransporteViewSet(viewsets.ModelViewSet):
     def leituras(self, request, pk=None):
         """Historico de temperatura e umidade durante o transporte (paginado e filtravel por inicio/fim)."""
         transporte = self.get_object()
-        leituras = LeituraFilter(request.query_params, queryset=transporte.leituras().select_related('dispositivo')).qs
+        leituras = ReadingFilter(request.query_params, queryset=transporte.readings.select_related('device')).qs
         pagina = self.paginate_queryset(leituras)
-        serializer = LeituraSerializer(pagina, many=True)
+        serializer = ReadingSerializer(pagina, many=True)
         return self.get_paginated_response(serializer.data)
 
     @action(detail=True, methods=['get'])
@@ -76,7 +76,7 @@ class TransporteViewSet(viewsets.ModelViewSet):
     def alertas(self, request, pk=None):
         """Alertas deste transporte."""
         transporte = self.get_object()
-        serializer = AlertaSerializer(transporte.alertas.select_related('transporte'), many=True)
+        serializer = AlertSerializer(transporte.alertas.select_related('transporte'), many=True)
         return Response(serializer.data)
 
 

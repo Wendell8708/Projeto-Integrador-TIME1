@@ -5,15 +5,15 @@ from rest_framework.response import Response
 
 from usuarios.permissions import PodeAlterarModelo
 
-from .models import Alerta
-from .serializers import AlertaSerializer
+from .models import Alert
+from .serializers import AlertSerializer
 
 
-class AlertaViewSet(viewsets.ReadOnlyModelViewSet):
+class AlertViewSet(viewsets.ReadOnlyModelViewSet):
     """Alertas gerados pelo sistema. So leitura, mais a acao de reconhecer."""
 
-    queryset = Alerta.objects.select_related('transporte', 'reconhecido_por')
-    serializer_class = AlertaSerializer
+    queryset = Alert.objects.select_related('transporte', 'reconhecido_por')
+    serializer_class = AlertSerializer
     filterset_fields = ['transporte', 'tipo', 'severidade', 'status']
 
     @action(detail=True, methods=['post'], permission_classes=[PodeAlterarModelo])

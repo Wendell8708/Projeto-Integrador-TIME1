@@ -2,11 +2,11 @@ from django.contrib.auth.models import User
 from django.db import models
 from django.db.models import Q
 
-from iot.models import Leitura
-from transporte.models import Transporte
+from iot.models import Reading
+from transporte.models import Shipment
 
 
-class Alerta(models.Model):
+class Alert(models.Model):
     TIPO_CHOICES = [
         ('temperatura', 'Temperatura'),
         ('umidade', 'Umidade'),
@@ -21,9 +21,9 @@ class Alerta(models.Model):
         ('resolvido', 'Resolvido'),
     ]
 
-    transporte = models.ForeignKey(Transporte, on_delete=models.PROTECT, related_name='alertas')
+    transporte = models.ForeignKey(Shipment, on_delete=models.PROTECT, related_name='alertas')
     leitura = models.ForeignKey(
-        Leitura, on_delete=models.PROTECT, related_name='alertas',
+        Reading, on_delete=models.PROTECT, related_name='alertas',
         help_text='Leitura que disparou o alerta.',
     )
     tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
@@ -43,6 +43,7 @@ class Alerta(models.Model):
     resolvido_em = models.DateTimeField(null=True, blank=True)
 
     class Meta:
+        db_table = 'alerts'
         ordering = ['-criado_em']
         indexes = [
             models.Index(fields=['transporte', 'status'], name='alerta_transporte_status_idx'),

@@ -14,10 +14,10 @@ Ideia central (didatica):
 from django.db import transaction
 from django.utils import timezone
 
-from iot.models import Leitura
-from transporte.services import CargaIncompativel, faixa_ideal, transporte_ativo_para
+from iot.models import Reading
+from transporte.services import CargaIncompativel, faixa_ideal
 
-from .models import Alerta
+from .models import Alert
 
 # Quantas leituras seguidas fora da faixa sao necessarias para abrir um alerta.
 LEITURAS_CONSECUTIVAS = 2
@@ -50,11 +50,11 @@ def classificar_leitura(leitura, faixa):
     """Classifica temperatura e umidade de uma leitura contra uma FaixaIdeal."""
     return {
         'temperatura': classificar(
-            leitura.temperatura, faixa.temperatura_minima, faixa.temperatura_maxima,
+            leitura.temperature_c, faixa.temperatura_minima, faixa.temperatura_maxima,
             faixa.margem_critica_temperatura,
         ),
         'umidade': classificar(
-            leitura.umidade, faixa.umidade_minima, faixa.umidade_maxima,
+            leitura.humidity_pct, faixa.umidade_minima, faixa.umidade_maxima,
             faixa.margem_critica_umidade,
         ),
     }
@@ -66,14 +66,11 @@ def _anteriores_tambem_fora(leitura, transporte, tipo, faixa):
     if necessarias == 0:
         return True
 
+    # As anteriores sao as da MESMA viagem (pela chave), nao as do dispositivo em geral.
     anteriores = list(
-        Leitura.objects
-        .filter(
-            dispositivo=leitura.dispositivo,
-            medido_em__gte=transporte.data_hora_inicio,
-            medido_em__lt=leitura.medido_em,
-        )
-        .order_by('-medido_em')[:necessarias]
+        Reading.objects
+        .filter(shipment=transporte, recorded_at__lt=leitura.recorded_at)
+        .order_by('-recorded_at')[:necessarias]
     )
     if len(anteriores) < necessarias:
         return False  # ainda nao ha historico suficiente para confirmar
@@ -86,9 +83,9 @@ def avaliar_leitura(leitura):
     Avalia uma leitura recem-registrada e abre, atualiza ou resolve alertas.
     Devolve a lista de alertas criados ou alterados por ela.
     """
-    transporte = transporte_ativo_para(leitura.dispositivo, leitura.medido_em)
-    if transporte is None:
-        return []  # leitura fora de qualquer transporte em andamento: nada a avaliar
+    # A viagem vem da propria leitura. Vale mesmo se a viagem ja terminou:
+    # dado atrasado que chega depois do "concluir" tambem gera alerta.
+    transporte = leitura.shipment
 
     try:
         faixa = faixa_ideal(transporte)
@@ -99,10 +96,11 @@ def avaliar_leitura(leitura):
 
     mudancas = []
     niveis = classificar_leitura(leitura, faixa)
+    valores = {'temperatura': leitura.temperature_c, 'umidade': leitura.humidity_pct}
 
     for tipo, (nivel, limite) in niveis.items():
-        ativo = Alerta.objects.filter(transporte=transporte, tipo=tipo, status__in=ESTADOS_ATIVOS).first()
-        valor = getattr(leitura, tipo)
+        ativo = Alert.objects.filter(transporte=transporte, tipo=tipo, status__in=ESTADOS_ATIVOS).first()
+        valor = valores[tipo]
 
         if nivel == 'normal':
             if ativo is not None:
@@ -120,7 +118,7 @@ def avaliar_leitura(leitura):
             continue
 
         if _anteriores_tambem_fora(leitura, transporte, tipo, faixa):
-            mudancas.append(Alerta.objects.create(
+            mudancas.append(Alert.objects.create(
                 transporte=transporte, leitura=leitura, tipo=tipo, severidade=nivel,
                 valor_medido=valor, limite_violado=limite,
             ))

@@ -6,20 +6,20 @@ from decimal import Decimal
 from django.utils import timezone
 
 from dominio.models import ConfiguracaoLimite, Fruta, Local, Veiculo
-from iot.models import Dispositivo
-from transporte.models import Carga, Transporte
+from iot.models import Device
+from transporte.models import Carga, Shipment
 
 
 def montar_cenario(com_limites=True, status='em_andamento'):
     """
     Cria fazenda, centro de distribuicao, veiculo, dispositivo, uma fruta com
-    faixa de 8 a 12 C (margem 3) e 80 a 90 % (margem 10) e um transporte.
-    O transporte comecou ha 1 hora, entao leituras recentes pertencem a ele.
+    faixa de 8 a 12 C (margem 3) e 80 a 90 % (margem 10) e uma viagem.
+    A viagem comecou ha 1 hora.
     """
     fazenda = Local.objects.create(nome='Fazenda Teste', tipo_local='fazenda')
     centro = Local.objects.create(nome='CD Teste', tipo_local='centro_distribuicao')
     veiculo = Veiculo.objects.create(placa='ABC1D23')
-    dispositivo = Dispositivo.objects.create(nome='ESP32 teste', identificador='esp32-teste')
+    dispositivo = Device.objects.create(nome='ESP32 teste', identificador='esp32-teste')
     fruta = Fruta.objects.create(nome='Manga')
     if com_limites:
         ConfiguracaoLimite.objects.create(
@@ -28,7 +28,7 @@ def montar_cenario(com_limites=True, status='em_andamento'):
             umidade_minima=Decimal('80'), umidade_maxima=Decimal('90'),
         )
     inicio = timezone.now() - timedelta(hours=1)
-    transporte = Transporte.objects.create(
+    transporte = Shipment.objects.create(
         origem=fazenda, destino=centro, veiculo=veiculo, dispositivo=dispositivo,
         data_hora_inicio=inicio, status=status,
     )

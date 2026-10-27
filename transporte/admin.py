@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Carga, Transporte
+from .models import Carga, Shipment
 
 
 class CargaInline(admin.TabularInline):
@@ -8,8 +8,8 @@ class CargaInline(admin.TabularInline):
     extra = 0
 
 
-@admin.register(Transporte)
-class TransporteAdmin(admin.ModelAdmin):
+@admin.register(Shipment)
+class ShipmentAdmin(admin.ModelAdmin):
     list_display = ['id', 'origem', 'destino', 'veiculo', 'dispositivo', 'status', 'data_hora_inicio']
     list_filter = ['status']
     inlines = [CargaInline]

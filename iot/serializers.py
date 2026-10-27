@@ -1,26 +1,22 @@
 from rest_framework import serializers
 
-from .models import Dispositivo, Leitura
-from .services import registrar_leitura
+from .models import Device, Reading
 
 
-class DispositivoSerializer(serializers.ModelSerializer):
+class DeviceSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Dispositivo
+        model = Device
         fields = ['id', 'nome', 'identificador', 'thingspeak_channel_id', 'situacao', 'data_cadastro']
         read_only_fields = ['id', 'data_cadastro']
 
 
-class LeituraSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Leitura
-        fields = ['id', 'dispositivo', 'temperatura', 'umidade', 'medido_em', 'recebido_em', 'origem_id']
-        read_only_fields = ['id', 'recebido_em']
-        # A unicidade (dispositivo + origem_id) e tratada no service, que devolve a
-        # leitura existente em vez de dar erro. Por isso desligamos o validador automatico.
-        validators = []
+class ReadingSerializer(serializers.ModelSerializer):
+    """So leitura: quem grava leituras e a placa, pela rota de telemetria (nao um usuario)."""
 
-    def create(self, dados):
-        # Toda leitura entra pelo service: grava sem duplicar e avalia alertas.
-        leitura, _criada = registrar_leitura(**dados)
-        return leitura
+    class Meta:
+        model = Reading
+        fields = [
+            'id', 'shipment', 'device', 'sequence', 'recorded_at', 'received_at',
+            'temperature_c', 'humidity_pct', 'impact_peak_g', 'network',
+        ]
+        read_only_fields = fields

@@ -1,16 +1,16 @@
 from django.contrib import admin
 
-from .models import Dispositivo, Leitura
+from .models import Device, Reading
 
 
-@admin.register(Dispositivo)
-class DispositivoAdmin(admin.ModelAdmin):
+@admin.register(Device)
+class DeviceAdmin(admin.ModelAdmin):
     list_display = ['nome', 'identificador', 'thingspeak_channel_id', 'situacao']
     search_fields = ['nome', 'identificador']
 
 
-@admin.register(Leitura)
-class LeituraAdmin(admin.ModelAdmin):
-    list_display = ['dispositivo', 'temperatura', 'umidade', 'medido_em', 'origem_id']
-    list_filter = ['dispositivo']
-    date_hierarchy = 'medido_em'
+@admin.register(Reading)
+class ReadingAdmin(admin.ModelAdmin):
+    list_display = ['device', 'shipment', 'sequence', 'temperature_c', 'humidity_pct', 'recorded_at']
+    list_filter = ['device', 'shipment']
+    date_hierarchy = 'recorded_at'
