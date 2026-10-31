@@ -1,0 +1,156 @@
+erDiagram
+    auth_user }o--o{ auth_group : "auth_user_groups (perfil)"
+    auth_group }o--o{ auth_permission : "auth_group_permissions"
+    auth_user |o--o{ shipments : "cria"
+    auth_user |o--o{ alerts : "reconhece"
+
+    locations ||--o{ shipments : "origem"
+    locations ||--o{ shipments : "destino"
+    vehicles ||--o{ shipments : "transporta"
+    devices ||--o{ shipments : "monitora"
+    devices ||--o{ device_credentials : "autentica"
+
+    fruits ||--o{ fruit_parameters : "tem limites"
+    fruits ||--o{ shipment_items : "compoe"
+    shipments ||--o{ shipment_items : "leva"
+
+    shipments ||--o{ readings : "recebe"
+    devices ||--o{ readings : "mede"
+    shipments ||--o{ shock_events : "registra"
+    devices ||--o{ shock_events : "detecta"
+
+    shipments ||--o{ alerts : "gera"
+    readings |o--o{ alerts : "dispara"
+    shock_events |o--o{ alerts : "dispara"
+
+    auth_user {
+        int id PK
+        varchar username UK
+        varchar email
+        varchar password "hash"
+        boolean is_active
+        timestamp date_joined
+        timestamp last_login
+    }
+    auth_group {
+        int id PK
+        varchar name UK "Administrador, Operador, Visualizador"
+    }
+    auth_permission {
+        int id PK
+        varchar codename "add/change/delete/view_modelo"
+        int content_type_id FK
+    }
+    locations {
+        bigint id PK
+        varchar name
+        varchar type "farm, distribution_center, warehouse"
+        varchar address
+        boolean is_active
+        timestamp created_at
+    }
+    vehicles {
+        bigint id PK
+        varchar plate UK
+        varchar model
+        boolean is_active
+        timestamp created_at
+    }
+    devices {
+        bigint id PK
+        varchar uid UK
+        varchar name
+        boolean is_active
+        timestamp last_seen_at
+        varchar last_connection_type "wifi, 2g"
+        varchar wifi_ssid
+        timestamp created_at
+        timestamp updated_at
+    }
+    device_credentials {
+        bigint id PK
+        bigint device_id FK
+        varchar secret_hash UK "SHA-256"
+        timestamp created_at
+        timestamp revoked_at
+    }
+    fruits {
+        bigint id PK
+        varchar name
+        text description
+        boolean is_active
+        timestamp created_at
+    }
+    fruit_parameters {
+        bigint id PK
+        bigint fruit_id FK "1 ativo por fruta"
+        numeric temperature_min_c
+        numeric temperature_max_c
+        numeric temperature_critical_margin_c
+        numeric humidity_min_pct
+        numeric humidity_max_pct
+        numeric humidity_critical_margin_pct
+        numeric impact_max_g
+        varchar source
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    shipments {
+        bigint id PK
+        bigint origin_id FK
+        bigint destination_id FK
+        bigint vehicle_id FK
+        bigint device_id FK "1 viagem ativa por placa"
+        bigint created_by_id FK
+        varchar status "planned, active, completed, cancelled"
+        timestamp started_at
+        timestamp ended_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    shipment_items {
+        bigint id PK
+        bigint shipment_id FK
+        bigint fruit_id FK
+        varchar lot
+        numeric quantity_kg
+        timestamp created_at
+    }
+    readings {
+        bigint id PK
+        bigint shipment_id FK
+        bigint device_id FK
+        bigint sequence "UNIQUE com device_id"
+        timestamp recorded_at
+        timestamp received_at
+        numeric temperature_c
+        numeric humidity_pct
+        numeric impact_peak_g
+        varchar network
+    }
+    shock_events {
+        bigint id PK
+        bigint shipment_id FK
+        bigint device_id FK
+        varchar event_id "UNIQUE com device_id"
+        timestamp recorded_at
+        timestamp received_at
+        numeric impact_peak_g
+    }
+    alerts {
+        bigint id PK
+        bigint shipment_id FK
+        bigint reading_id FK "opcional"
+        bigint shock_event_id FK "opcional"
+        varchar type "temperature, humidity, shock"
+        varchar severity "warning, critical"
+        varchar status "open, acknowledged, resolved"
+        varchar message
+        numeric measured_value
+        numeric violated_limit
+        timestamp created_at
+        bigint acknowledged_by_id FK
+        timestamp acknowledged_at
+        timestamp resolved_at
+    }

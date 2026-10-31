@@ -1,34 +1,35 @@
+from django.db.models import Prefetch
 from rest_framework import viewsets
 
-from .models import ConfiguracaoLimite, Fruta, Local, Veiculo
+from .models import Fruit, FruitParameter, Location, Vehicle
 from .serializers import (
-    ConfiguracaoLimiteSerializer, FrutaSerializer, LocalSerializer, VeiculoSerializer,
+    FruitParameterSerializer, FruitSerializer, LocationSerializer, VehicleSerializer,
 )
 
 # As views sao "finas": o ModelViewSet ja entrega listar, criar, ver, editar e
 # apagar. A permissao vem do padrao do projeto (grupos + permissoes do Django).
 
 
-class LocalViewSet(viewsets.ModelViewSet):
-    queryset = Local.objects.all()
-    serializer_class = LocalSerializer
-    filterset_fields = ['tipo_local', 'situacao']
-    search_fields = ['nome']
+class LocationViewSet(viewsets.ModelViewSet):
+    queryset = Location.objects.all()
+    serializer_class = LocationSerializer
+    filterset_fields = ['type', 'is_active']
 
 
-class VeiculoViewSet(viewsets.ModelViewSet):
-    queryset = Veiculo.objects.all()
-    serializer_class = VeiculoSerializer
-    filterset_fields = ['situacao']
+class VehicleViewSet(viewsets.ModelViewSet):
+    queryset = Vehicle.objects.all()
+    serializer_class = VehicleSerializer
+    filterset_fields = ['is_active']
 
 
-class FrutaViewSet(viewsets.ModelViewSet):
-    queryset = Fruta.objects.all()
-    serializer_class = FrutaSerializer
-    filterset_fields = ['situacao']
+class FruitViewSet(viewsets.ModelViewSet):
+    # Busca os parametros junto (1 consulta a mais no total, nao 1 por fruta).
+    queryset = Fruit.objects.prefetch_related(Prefetch('parameters', queryset=FruitParameter.objects.all()))
+    serializer_class = FruitSerializer
+    filterset_fields = ['is_active']
 
 
-class ConfiguracaoLimiteViewSet(viewsets.ModelViewSet):
-    queryset = ConfiguracaoLimite.objects.select_related('fruta')
-    serializer_class = ConfiguracaoLimiteSerializer
-    filterset_fields = ['fruta', 'situacao']
+class FruitParameterViewSet(viewsets.ModelViewSet):
+    queryset = FruitParameter.objects.select_related('fruit')
+    serializer_class = FruitParameterSerializer
+    filterset_fields = ['fruit', 'is_active']

@@ -1,15 +1,15 @@
 from django.contrib import admin
 
-from .models import Carga, Shipment
+from .models import Shipment, ShipmentItem
 
 
-class CargaInline(admin.TabularInline):
-    model = Carga
+class ShipmentItemInline(admin.TabularInline):
+    model = ShipmentItem
     extra = 0
 
 
 @admin.register(Shipment)
 class ShipmentAdmin(admin.ModelAdmin):
-    list_display = ['id', 'origem', 'destino', 'veiculo', 'dispositivo', 'status', 'data_hora_inicio']
+    list_display = ['id', 'origin', 'destination', 'vehicle', 'device', 'status', 'started_at']
     list_filter = ['status']
-    inlines = [CargaInline]
+    inlines = [ShipmentItemInline]

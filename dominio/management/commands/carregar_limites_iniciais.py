@@ -6,11 +6,11 @@ Uso:  python manage.py carregar_limites_iniciais
 ATENCAO: os valores abaixo sao uma PROPOSTA inicial, tirada de resumos de
 fontes tecnicas (Embrapa, CEAGESP, USDA Handbook 66 e artigos). Nao foi possivel
 abrir os PDFs originais da Embrapa (servidor fora do ar na pesquisa), entao
-TODA faixa e carregada INATIVA (situacao=False) e marcada "A CONFERIR" no campo
+TODA faixa e carregada INATIVA (is_active=False) e marcada "A CONFERIR" no campo
 `fonte`. Inativa significa que ela NAO gera alertas ainda.
 
-Fluxo: conferir cada faixa na fonte -> ajustar valores -> ativar (situacao=True)
-pelo admin ou por PATCH /api/v1/limites/{id}/.
+Fluxo: conferir cada faixa na fonte -> ajustar valores -> ativar (is_active=True)
+pelo admin ou por PATCH /api/v1/fruit-parameters/{id}.
 
 O comando e idempotente: rodar de novo atualiza as mesmas frutas, sem duplicar,
 e NAO reativa nem sobrescreve faixas que voce ja ativou.
@@ -21,7 +21,10 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from dominio.models import ConfiguracaoLimite, Fruta
+from dominio.models import Fruit, FruitParameter
+
+# Impacto maximo inicial para todas: 2.5 g (valor de exemplo do plano tecnico, A CONFERIR nos testes de impacto).
+IMPACTO_MAXIMO_G = Decimal('2.5')
 
 # nome, temp_min, temp_max, margem_temp, umid_min, umid_max, margem_umid, fonte
 FAIXAS = [
@@ -49,25 +52,26 @@ class Command(BaseCommand):
     @transaction.atomic
     def handle(self, *args, **options):
         for nome, tmin, tmax, tmargem, umin, umax, umargem, fonte in FAIXAS:
-            fruta, _ = Fruta.objects.get_or_create(nome=nome)
+            fruta, _ = Fruit.objects.get_or_create(name=nome)
 
             # Nao mexe numa faixa que alguem ja conferiu e ativou.
-            if ConfiguracaoLimite.objects.filter(fruta=fruta, situacao=True).exists():
+            if FruitParameter.objects.filter(fruit=fruta, is_active=True).exists():
                 self.stdout.write(f'{nome}: ja tem faixa ativa, mantida.')
                 continue
 
-            ConfiguracaoLimite.objects.update_or_create(
-                fruta=fruta, situacao=False,
+            FruitParameter.objects.update_or_create(
+                fruit=fruta, is_active=False,
                 defaults={
-                    'temperatura_minima': Decimal(tmin), 'temperatura_maxima': Decimal(tmax),
-                    'margem_critica_temperatura': Decimal(tmargem),
-                    'umidade_minima': Decimal(umin), 'umidade_maxima': Decimal(umax),
-                    'margem_critica_umidade': Decimal(umargem),
-                    'fonte': fonte,
+                    'temperature_min_c': Decimal(tmin), 'temperature_max_c': Decimal(tmax),
+                    'temperature_critical_margin_c': Decimal(tmargem),
+                    'humidity_min_pct': Decimal(umin), 'humidity_max_pct': Decimal(umax),
+                    'humidity_critical_margin_pct': Decimal(umargem),
+                    'impact_max_g': IMPACTO_MAXIMO_G,
+                    'source': fonte,
                 },
             )
             self.stdout.write(self.style.SUCCESS(f'{nome}: faixa carregada (INATIVA, a conferir).'))
 
         self.stdout.write(self.style.WARNING(
-            'Lembrete: confira cada faixa na fonte e ative (situacao=True) so depois.'
+            'Lembrete: confira cada faixa na fonte e ative (is_active=True) so depois.'
         ))

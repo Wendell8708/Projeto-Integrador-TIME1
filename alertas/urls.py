@@ -1,8 +1,8 @@
-from rest_framework.routers import SimpleRouter
+from piADS04.routers import OptionalSlashRouter
 
 from .views import AlertViewSet
 
-router = SimpleRouter()
-router.register('alertas', AlertViewSet)
+router = OptionalSlashRouter()
+router.register('alerts', AlertViewSet)
 
 urlpatterns = router.urls

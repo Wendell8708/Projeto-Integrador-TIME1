@@ -1,9 +1,9 @@
-from rest_framework.routers import SimpleRouter
+from piADS04.routers import OptionalSlashRouter
 
-from .views import CargaViewSet, ShipmentViewSet
+from .views import ShipmentItemViewSet, ShipmentViewSet
 
-router = SimpleRouter()
-router.register('transportes', ShipmentViewSet)
-router.register('cargas', CargaViewSet)
+router = OptionalSlashRouter()
+router.register('shipments', ShipmentViewSet)
+router.register('shipment-items', ShipmentItemViewSet)
 
 urlpatterns = router.urls

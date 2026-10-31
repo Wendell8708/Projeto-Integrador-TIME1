@@ -1,28 +1,29 @@
 from django.contrib import admin
 
-from .models import ConfiguracaoLimite, Fruta, Local, Veiculo
+from .models import Fruit, FruitParameter, Location, Vehicle
 
 
-@admin.register(Local)
-class LocalAdmin(admin.ModelAdmin):
-    list_display = ['nome', 'tipo_local', 'situacao']
-    list_filter = ['tipo_local', 'situacao']
-    search_fields = ['nome']
+@admin.register(Location)
+class LocationAdmin(admin.ModelAdmin):
+    list_display = ['name', 'type', 'is_active']
+    list_filter = ['type', 'is_active']
+    search_fields = ['name']
 
 
-@admin.register(Veiculo)
-class VeiculoAdmin(admin.ModelAdmin):
-    list_display = ['placa', 'modelo', 'situacao']
-    search_fields = ['placa']
+@admin.register(Vehicle)
+class VehicleAdmin(admin.ModelAdmin):
+    list_display = ['plate', 'model', 'is_active']
+    search_fields = ['plate']
 
 
-@admin.register(Fruta)
-class FrutaAdmin(admin.ModelAdmin):
-    list_display = ['nome', 'situacao']
-    search_fields = ['nome']
+@admin.register(Fruit)
+class FruitAdmin(admin.ModelAdmin):
+    list_display = ['name', 'is_active']
+    search_fields = ['name']
 
 
-@admin.register(ConfiguracaoLimite)
-class ConfiguracaoLimiteAdmin(admin.ModelAdmin):
-    list_display = ['fruta', 'temperatura_minima', 'temperatura_maxima', 'umidade_minima', 'umidade_maxima', 'situacao']
-    list_filter = ['situacao']
+@admin.register(FruitParameter)
+class FruitParameterAdmin(admin.ModelAdmin):
+    list_display = ['fruit', 'temperature_min_c', 'temperature_max_c', 'humidity_min_pct',
+                    'humidity_max_pct', 'impact_max_g', 'is_active']
+    list_filter = ['is_active']

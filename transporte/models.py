@@ -1,7 +1,8 @@
+from django.conf import settings
 from django.db import models
 from django.db.models import F, Q
 
-from dominio.models import Fruta, Local, Veiculo
+from dominio.models import Fruit, Location, Vehicle
 from iot.models import Device
 
 
@@ -9,65 +10,66 @@ class Shipment(models.Model):
     """
     A viagem: unidade central do monitoramento.
 
-    Leituras e impactos pertencem a uma viagem (`shipment.readings`).
+    Leituras, impactos e alertas pertencem a uma viagem (shipment.readings,
+    shipment.shock_events, shipment.alerts).
     """
 
     STATUS_CHOICES = [
-        ('planejado', 'Planejado'),
-        ('em_andamento', 'Em Andamento'),
-        ('concluido', 'Concluído'),
-        ('cancelado', 'Cancelado'),
+        ('planned', 'Planejada'),
+        ('active', 'Em andamento'),
+        ('completed', 'Concluída'),
+        ('cancelled', 'Cancelada'),
     ]
 
-    origem = models.ForeignKey(Local, on_delete=models.PROTECT, related_name='transportes_origem')
-    destino = models.ForeignKey(Local, on_delete=models.PROTECT, related_name='transportes_destino')
-    veiculo = models.ForeignKey(Veiculo, on_delete=models.PROTECT, related_name='transportes')
-    dispositivo = models.ForeignKey(Device, on_delete=models.PROTECT, related_name='transportes')
+    origin = models.ForeignKey(Location, on_delete=models.PROTECT, related_name='shipments_from')
+    destination = models.ForeignKey(Location, on_delete=models.PROTECT, related_name='shipments_to')
+    vehicle = models.ForeignKey(Vehicle, on_delete=models.PROTECT, related_name='shipments')
+    device = models.ForeignKey(Device, on_delete=models.PROTECT, related_name='shipments')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='shipments_created',
+    )
 
-    data_hora_inicio = models.DateTimeField()
-    data_hora_fim = models.DateTimeField(null=True, blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='planejado')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='planned')
+    started_at = models.DateTimeField(help_text='Inicio previsto; vira o inicio REAL quando a viagem e iniciada.')
+    ended_at = models.DateTimeField(null=True, blank=True)
 
-    data_cadastro = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'shipments'
-        ordering = ['-data_hora_inicio']
+        ordering = ['-started_at']
         constraints = [
-            models.CheckConstraint(
-                condition=~Q(origem=F('destino')),
-                name='transporte_origem_diferente_destino',
-            ),
-            models.CheckConstraint(
-                condition=Q(data_hora_fim__isnull=True) | Q(data_hora_fim__gt=F('data_hora_inicio')),
-                name='transporte_fim_depois_do_inicio',
-            ),
+            models.CheckConstraint(condition=~Q(origin=F('destination')),
+                                   name='shipments_origin_differs_destination'),
+            models.CheckConstraint(condition=Q(ended_at__isnull=True) | Q(ended_at__gt=F('started_at')),
+                                   name='shipments_end_after_start'),
+            # Um dispositivo so pode estar em UMA viagem ativa por vez; senao nao se
+            # sabe a quem a leitura pertence. O banco garante, mesmo com dois cliques ao mesmo tempo.
+            models.UniqueConstraint(fields=['device'], condition=Q(status='active'),
+                                    name='shipments_one_active_per_device'),
         ]
 
     def __str__(self):
-        return f'Transporte #{self.id} - {self.origem} → {self.destino}'
+        return f'Viagem #{self.id} - {self.origin} → {self.destination}'
 
 
-class Carga(models.Model):
-    transporte = models.ForeignKey(Shipment, on_delete=models.CASCADE, related_name='cargas')
-    fruta = models.ForeignKey(Fruta, on_delete=models.PROTECT, related_name='cargas')
+class ShipmentItem(models.Model):
+    """Uma fruta (lote) dentro da viagem. Uma viagem pode levar varias frutas (carga mista)."""
 
-    lote = models.CharField(max_length=50)
-    quantidade_kg = models.DecimalField(max_digits=10, decimal_places=2)
-
-    data_cadastro = models.DateTimeField(auto_now_add=True)
+    shipment = models.ForeignKey(Shipment, on_delete=models.CASCADE, related_name='items')
+    fruit = models.ForeignKey(Fruit, on_delete=models.PROTECT, related_name='shipment_items')
+    lot = models.CharField(max_length=50)
+    quantity_kg = models.DecimalField(max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        db_table = 'shipment_items'
         constraints = [
-            models.UniqueConstraint(
-                fields=['transporte', 'fruta', 'lote'],
-                name='carga_unica_por_transporte_fruta_lote',
-            ),
-            models.CheckConstraint(
-                condition=Q(quantidade_kg__gt=0),
-                name='carga_quantidade_positiva',
-            ),
+            models.UniqueConstraint(fields=['shipment', 'fruit', 'lot'], name='shipment_items_unique_lot'),
+            models.CheckConstraint(condition=Q(quantity_kg__gt=0), name='shipment_items_quantity_positive'),
         ]
 
     def __str__(self):
-        return f'{self.fruta.nome} - Lote {self.lote} ({self.quantidade_kg}kg)'
+        return f'{self.fruit.name} - lote {self.lot} ({self.quantity_kg} kg)'

@@ -1,12 +1,12 @@
-from rest_framework.routers import SimpleRouter
+from piADS04.routers import OptionalSlashRouter
 
-from .views import ConfiguracaoLimiteViewSet, FrutaViewSet, LocalViewSet, VeiculoViewSet
+from .views import FruitParameterViewSet, FruitViewSet, LocationViewSet, VehicleViewSet
 
-# O router gera sozinho as rotas: /locais/ (lista/cria) e /locais/{id}/ (ver/edita/apaga).
-router = SimpleRouter()
-router.register('locais', LocalViewSet)
-router.register('veiculos', VeiculoViewSet)
-router.register('frutas', FrutaViewSet)
-router.register('limites', ConfiguracaoLimiteViewSet)
+# OptionalSlashRouter: aceita /fruits e /fruits/ (o plano usa sem barra no final).
+router = OptionalSlashRouter()
+router.register('locations', LocationViewSet)
+router.register('vehicles', VehicleViewSet)
+router.register('fruits', FruitViewSet)
+router.register('fruit-parameters', FruitParameterViewSet)
 
 urlpatterns = router.urls

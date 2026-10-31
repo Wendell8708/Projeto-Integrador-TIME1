@@ -11,10 +11,14 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.permissions import AllowAny, IsAdminUser
 
+from .views import home
+
 # Em desenvolvimento a documentacao e aberta; fora dele, so administradores.
 permissao_docs = [AllowAny] if settings.DEBUG else [IsAdminUser]
 
 urlpatterns = [
+    # A raiz mostra que a API esta no ar (em vez de 404).
+    path('', home, name='home'),
     path('admin/', admin.site.urls),
 
     path('api/v1/auth/', include('usuarios.urls')),
@@ -26,3 +30,6 @@ urlpatterns = [
     path('api/schema/', SpectacularAPIView.as_view(permission_classes=permissao_docs), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema', permission_classes=permissao_docs), name='docs'),
 ]
+
+# Rota inexistente responde JSON (vale com DEBUG=False, como no Render).
+handler404 = 'piADS04.views.not_found'

@@ -5,5 +5,5 @@ from .models import Alert
 
 @admin.register(Alert)
 class AlertAdmin(admin.ModelAdmin):
-    list_display = ['id', 'transporte', 'tipo', 'severidade', 'status', 'valor_medido', 'criado_em']
-    list_filter = ['status', 'severidade', 'tipo']
+    list_display = ['id', 'shipment', 'type', 'severity', 'status', 'measured_value', 'created_at']
+    list_filter = ['status', 'severity', 'type']

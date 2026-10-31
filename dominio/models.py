@@ -3,112 +3,130 @@ from django.db import models
 from django.db.models import F, Q
 
 
-class Local(models.Model):
-    TIPO_CHOICES = [
-        ('fazenda', 'Fazenda'),
-        ('centro_distribuicao', 'Centro de Distribuição'),
-        ('armazem', 'Armazém'),
+class Location(models.Model):
+    """Local de origem ou destino de uma viagem (fazenda, centro de distribuicao, armazem)."""
+
+    TYPE_CHOICES = [
+        ('farm', 'Fazenda'),
+        ('distribution_center', 'Centro de Distribuição'),
+        ('warehouse', 'Armazém'),
     ]
 
-    nome = models.CharField(max_length=150)
-    tipo_local = models.CharField(max_length=30, choices=TIPO_CHOICES)
-    endereco = models.CharField(max_length=255, blank=True)
-    situacao = models.BooleanField(default=True)
-    data_cadastro = models.DateTimeField(auto_now_add=True)
+    name = models.CharField(max_length=150)
+    type = models.CharField(max_length=30, choices=TYPE_CHOICES)
+    address = models.CharField(max_length=255, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['nome']
+        db_table = 'locations'
+        ordering = ['name']
 
     def __str__(self):
-        return f'{self.nome} ({self.get_tipo_local_display()})'
+        return f'{self.name} ({self.get_type_display()})'
 
 
-class Veiculo(models.Model):
-    placa = models.CharField(max_length=10, unique=True)
-    modelo = models.CharField(max_length=100, blank=True)
-    situacao = models.BooleanField(default=True)
-    data_cadastro = models.DateTimeField(auto_now_add=True)
+class Vehicle(models.Model):
+    plate = models.CharField(max_length=10, unique=True)
+    model = models.CharField(max_length=100, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['placa']
+        db_table = 'vehicles'
+        ordering = ['plate']
 
     def __str__(self):
-        return self.placa
+        return self.plate
 
 
-class Fruta(models.Model):
-    nome = models.CharField(max_length=100)
-    descricao = models.TextField(blank=True)
-    situacao = models.BooleanField(default=True)
-    data_cadastro = models.DateTimeField(auto_now_add=True)
+class Fruit(models.Model):
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['nome']
+        db_table = 'fruits'
+        ordering = ['name']
 
     def __str__(self):
-        return self.nome
+        return self.name
 
 
-class ConfiguracaoLimite(models.Model):
+class FruitParameter(models.Model):
     """
-    Faixa IDEAL de temperatura e umidade para transportar uma fruta.
+    Faixa IDEAL de temperatura, umidade e impacto para transportar uma fruta.
 
-    Como o status e calculado (ver alertas/services.py):
-      - dentro de [minimo, maximo]                       -> normal
-      - fora da faixa, ate `margem_critica` de distancia -> atencao
-      - alem de `margem_critica` da faixa                -> critico
+    Como o nivel do alerta e calculado (ver alertas/services.py):
+      - dentro de [min, max]                         -> normal
+      - fora da faixa, ate a margem critica          -> warning (atencao)
+      - alem da margem critica                       -> critical (critico)
 
-    Exemplo: faixa 8 a 12 C com margem 3 -> 7 C e atencao; 4 C e critico.
+    Exemplo: faixa 8 a 12 C com margem 3 -> 14 C e warning; 16 C e critical.
     """
 
-    fruta = models.ForeignKey(Fruta, on_delete=models.CASCADE, related_name='limites')
+    fruit = models.ForeignKey(Fruit, on_delete=models.CASCADE, related_name='parameters')
 
-    temperatura_minima = models.DecimalField(max_digits=5, decimal_places=2)
-    temperatura_maxima = models.DecimalField(max_digits=5, decimal_places=2)
-    margem_critica_temperatura = models.DecimalField(
+    temperature_min_c = models.DecimalField(max_digits=5, decimal_places=2)
+    temperature_max_c = models.DecimalField(max_digits=5, decimal_places=2)
+    temperature_critical_margin_c = models.DecimalField(
         max_digits=5, decimal_places=2, default=3,
-        help_text='Distancia (em graus C) alem da faixa ideal a partir da qual o alerta e critico.',
+        help_text='Distancia (em graus C) alem da faixa a partir da qual o alerta e critico.',
     )
 
-    umidade_minima = models.DecimalField(max_digits=5, decimal_places=2)
-    umidade_maxima = models.DecimalField(max_digits=5, decimal_places=2)
-    margem_critica_umidade = models.DecimalField(
+    humidity_min_pct = models.DecimalField(max_digits=5, decimal_places=2)
+    humidity_max_pct = models.DecimalField(max_digits=5, decimal_places=2)
+    humidity_critical_margin_pct = models.DecimalField(
         max_digits=5, decimal_places=2, default=10,
-        help_text='Distancia (em pontos percentuais) alem da faixa ideal a partir da qual o alerta e critico.',
+        help_text='Distancia (em pontos percentuais) alem da faixa a partir da qual o alerta e critico.',
     )
 
-    fonte = models.CharField(
+    # Maior aceleracao dinamica (sem a gravidade) aceitavel num impacto, em g.
+    impact_max_g = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+
+    source = models.CharField(
         max_length=255, blank=True, default='',
         help_text='De onde veio a faixa (Embrapa, CEAGESP, artigo...). Importante para rastrear o dado.',
     )
-    situacao = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        db_table = 'fruit_parameters'
         constraints = [
             models.CheckConstraint(
-                condition=Q(temperatura_minima__lt=F('temperatura_maxima')),
-                name='limite_temperatura_min_menor_que_max',
+                condition=Q(temperature_min_c__lt=F('temperature_max_c')),
+                name='fruit_parameters_temperature_min_lt_max',
             ),
             models.CheckConstraint(
-                condition=Q(umidade_minima__lt=F('umidade_maxima')),
-                name='limite_umidade_min_menor_que_max',
+                condition=Q(humidity_min_pct__lt=F('humidity_max_pct')),
+                name='fruit_parameters_humidity_min_lt_max',
             ),
-            # So pode existir UMA configuracao ativa por fruta; ela e a usada nos alertas.
+            models.CheckConstraint(
+                condition=Q(humidity_min_pct__gte=0, humidity_max_pct__lte=100),
+                name='fruit_parameters_humidity_0_100',
+            ),
+            models.CheckConstraint(
+                condition=Q(impact_max_g__isnull=True) | Q(impact_max_g__gt=0),
+                name='fruit_parameters_impact_positive',
+            ),
+            # So pode existir UM parametro ativo por fruta; e ele que vale para os alertas.
             models.UniqueConstraint(
-                fields=['fruta'],
-                condition=Q(situacao=True),
-                name='um_limite_ativo_por_fruta',
+                fields=['fruit'], condition=Q(is_active=True),
+                name='fruit_parameters_one_active_per_fruit',
             ),
         ]
 
     def clean(self):
-        # Mensagem amigavel no admin/formularios (a constraint protege o banco).
-        if self.temperatura_minima is not None and self.temperatura_maxima is not None:
-            if self.temperatura_minima >= self.temperatura_maxima:
+        # Mensagem amigavel no admin (as constraints protegem o banco).
+        if self.temperature_min_c is not None and self.temperature_max_c is not None:
+            if self.temperature_min_c >= self.temperature_max_c:
                 raise ValidationError('A temperatura mínima deve ser menor que a máxima.')
-        if self.umidade_minima is not None and self.umidade_maxima is not None:
-            if self.umidade_minima >= self.umidade_maxima:
+        if self.humidity_min_pct is not None and self.humidity_max_pct is not None:
+            if self.humidity_min_pct >= self.humidity_max_pct:
                 raise ValidationError('A umidade mínima deve ser menor que a máxima.')
 
     def __str__(self):
-        return f'Limites de {self.fruta.nome}'
+        return f'Parâmetros de {self.fruit.name}'

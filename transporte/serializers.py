@@ -1,55 +1,55 @@
 from rest_framework import serializers
 
-from .models import Carga, Shipment
-from .services import CargaIncompativel, faixa_ideal_de_frutas
+from .models import Shipment, ShipmentItem
+from .services import IncompatibleCargo, fruit_range_for
 
 
-class CargaSerializer(serializers.ModelSerializer):
-    fruta_nome = serializers.CharField(source='fruta.nome', read_only=True)
+class ShipmentItemSerializer(serializers.ModelSerializer):
+    fruit_name = serializers.CharField(source='fruit.name', read_only=True)
 
     class Meta:
-        model = Carga
-        fields = ['id', 'transporte', 'fruta', 'fruta_nome', 'lote', 'quantidade_kg', 'data_cadastro']
-        read_only_fields = ['id', 'data_cadastro']
+        model = ShipmentItem
+        fields = ['id', 'shipment', 'fruit', 'fruit_name', 'lot', 'quantity_kg', 'created_at']
+        read_only_fields = ['id', 'created_at']
 
     def validate(self, dados):
-        transporte = dados.get('transporte', getattr(self.instance, 'transporte', None))
-        fruta = dados.get('fruta', getattr(self.instance, 'fruta', None))
+        viagem = dados.get('shipment', getattr(self.instance, 'shipment', None))
+        fruta = dados.get('fruit', getattr(self.instance, 'fruit', None))
 
-        if transporte.status in ('concluido', 'cancelado'):
-            raise serializers.ValidationError('Não é possível alterar a carga de um transporte concluído ou cancelado.')
+        if viagem.status in ('completed', 'cancelled'):
+            raise serializers.ValidationError('Não é possível alterar a carga de uma viagem concluída ou cancelada.')
 
         # Carga mista: a nova fruta precisa ter faixa em comum com as que ja estao no caminhao.
-        frutas = set(transporte.cargas.values_list('fruta_id', flat=True))
+        frutas = set(viagem.items.values_list('fruit_id', flat=True))
         if self.instance is not None:
-            frutas.discard(self.instance.fruta_id)
+            frutas.discard(self.instance.fruit_id)
         frutas.add(fruta.id)
         try:
-            faixa_ideal_de_frutas(frutas)
-        except CargaIncompativel as erro:
+            fruit_range_for(frutas)
+        except IncompatibleCargo as erro:
             raise serializers.ValidationError(str(erro))
         return dados
 
 
 class ShipmentSerializer(serializers.ModelSerializer):
-    cargas = CargaSerializer(many=True, read_only=True)
+    items = ShipmentItemSerializer(many=True, read_only=True)
 
     class Meta:
         model = Shipment
         fields = [
-            'id', 'origem', 'destino', 'veiculo', 'dispositivo',
-            'data_hora_inicio', 'data_hora_fim', 'status', 'data_cadastro', 'cargas',
+            'id', 'origin', 'destination', 'vehicle', 'device', 'created_by',
+            'status', 'started_at', 'ended_at', 'items', 'created_at', 'updated_at',
         ]
-        # O status so muda pelas acoes /iniciar/ e /concluir/ (regras de transicao).
-        read_only_fields = ['id', 'status', 'data_cadastro']
+        # O status so muda pelas acoes /start e /finish (regras de transicao).
+        read_only_fields = ['id', 'created_by', 'status', 'created_at', 'updated_at']
 
     def validate(self, dados):
         def valor(campo):
             return dados.get(campo, getattr(self.instance, campo, None))
 
-        if valor('origem') == valor('destino'):
+        if valor('origin') == valor('destination'):
             raise serializers.ValidationError('Origem e destino devem ser diferentes.')
-        fim = valor('data_hora_fim')
-        if fim is not None and fim <= valor('data_hora_inicio'):
+        fim = valor('ended_at')
+        if fim is not None and fim <= valor('started_at'):
             raise serializers.ValidationError('O fim deve ser depois do início.')
         return dados

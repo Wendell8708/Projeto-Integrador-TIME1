@@ -30,13 +30,13 @@ def permissoes_do_projeto():
     ]
     return Permission.objects.filter(content_type__in=tipos)
 
-# Operador: cadastra/edita o que e do dia a dia; nao mexe em limites nem dispositivos.
-# Os nomes sao os do model em minusculas (shipment, alert...): e assim que o Django
-# batiza as permissoes (add_shipment, change_alert...).
+# Operador: cadastra/edita o que e do dia a dia; nao mexe em frutas, limites nem dispositivos.
+# Os nomes sao os do model em minusculas (shipment, shipmentitem...): e assim que o
+# Django batiza as permissoes (add_shipment, change_alert...).
 OPERADOR_PODE_ADICIONAR_E_EDITAR = [
-    'local', 'veiculo', 'shipment', 'carga',
+    'location', 'vehicle', 'shipment', 'shipmentitem',
 ]
-OPERADOR_PODE_EDITAR = ['alert']  # reconhecer alertas
+OPERADOR_PODE_EDITAR = ['alert']  # reconhecer e resolver alertas
 
 
 def permissoes_do_administrador():

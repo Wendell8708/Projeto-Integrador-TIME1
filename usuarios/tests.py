@@ -1,54 +1,68 @@
 from datetime import timedelta
 
 from django.contrib.auth.models import Group, User
+from django.core.cache import cache
 from django.core.management import call_command
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
-from iot.services import registrar_leitura
+from iot.services import register_reading
 from piADS04.tests_utils import montar_cenario
 
 
-class AutenticacaoTest(APITestCase):
+class AuthTest(APITestCase):
     def setUp(self):
+        cache.clear()  # zera o contador do limite de tentativas de login
         call_command('criar_grupos', verbosity=0)
-        self.usuario = User.objects.create_user('ana', password='senha-forte-123', email='ana@exemplo.com')
-        self.usuario.groups.add(Group.objects.get(name='Visualizador'))
+        self.usuario = User.objects.create_user('ana', password='senha-forte-123', email='ana@exemplo.com',
+                                                first_name='Ana', last_name='Lima')
+        self.usuario.groups.add(Group.objects.get(name='Operador'))
 
-    def logar(self, username='ana', password='senha-forte-123'):
-        return self.client.post('/api/v1/auth/token/', {'username': username, 'password': password})
+    def logar(self, email='ana@exemplo.com', password='senha-forte-123'):
+        return self.client.post('/api/v1/auth/login', {'email': email, 'password': password})
 
-    def test_login_devolve_access_e_refresh(self):
+    def test_login_por_email_devolve_tokens_e_usuario_no_formato_do_plano(self):
         resposta = self.logar()
         self.assertEqual(resposta.status_code, 200)
-        self.assertIn('access', resposta.data)
-        self.assertIn('refresh', resposta.data)
+        corpo = resposta.json()['data']
+        self.assertIn('access', corpo)
+        self.assertIn('refresh', corpo)
+        self.assertEqual(corpo['user'], {'id': self.usuario.id, 'name': 'Ana Lima',
+                                         'email': 'ana@exemplo.com', 'role': 'operator'})
+
+    def test_email_nao_diferencia_maiusculas(self):
+        self.assertEqual(self.logar(email='ANA@Exemplo.com').status_code, 200)
 
     def test_login_com_senha_errada_falha(self):
-        self.assertEqual(self.logar(password='errada').status_code, 401)
+        self.assertEqual(self.logar(password='errada').status_code, 400)
 
     def test_refresh_gera_novo_access(self):
-        refresh = self.logar().data['refresh']
-        resposta = self.client.post('/api/v1/auth/token/refresh/', {'refresh': refresh})
+        refresh = self.logar().json()['data']['refresh']
+        resposta = self.client.post('/api/v1/auth/refresh', {'refresh': refresh})
         self.assertEqual(resposta.status_code, 200)
-        self.assertIn('access', resposta.data)
+        self.assertIn('access', resposta.json()['data'])
 
     def test_me_exige_login(self):
-        self.assertEqual(self.client.get('/api/v1/auth/me/').status_code, 401)
+        self.assertEqual(self.client.get('/api/v1/auth/me').status_code, 401)
 
-    def test_me_mostra_grupos_e_permissoes(self):
-        token = self.logar().data['access']
-        resposta = self.client.get('/api/v1/auth/me/', HTTP_AUTHORIZATION=f'Bearer {token}')
+    def test_me_mostra_papel_grupos_e_permissoes(self):
+        token = self.logar().json()['data']['access']
+        resposta = self.client.get('/api/v1/auth/me', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(resposta.status_code, 200)
-        self.assertEqual(resposta.data['grupos'], ['Visualizador'])
-        self.assertIn('transporte.view_shipment', resposta.data['permissoes'])
-        self.assertNotIn('transporte.add_shipment', resposta.data['permissoes'])
+        self.assertEqual(resposta.data['role'], 'operator')
+        self.assertIn('transporte.add_shipment', resposta.data['permissions'])
+        self.assertNotIn('dominio.add_fruit', resposta.data['permissions'])
+
+    def test_muitas_tentativas_de_login_sao_barradas(self):
+        for _ in range(10):
+            self.logar(password='errada')
+        self.assertEqual(self.logar().status_code, 429)
 
 
-class PermissoesPorGrupoTest(APITestCase):
+class PermissionsByGroupTest(APITestCase):
     def setUp(self):
         call_command('criar_grupos', verbosity=0)
-        self.c = montar_cenario(status='planejado')
+        self.c = montar_cenario(status='planned')
 
     def usuario_no_grupo(self, grupo):
         usuario = User.objects.create_user(f'u-{grupo}', password='x')
@@ -56,112 +70,112 @@ class PermissoesPorGrupoTest(APITestCase):
         self.client.force_authenticate(usuario)
 
     def test_sem_login_nao_acessa_nada(self):
-        self.assertEqual(self.client.get('/api/v1/locais/').status_code, 401)
+        self.assertEqual(self.client.get('/api/v1/locations').status_code, 401)
 
     def test_usuario_sem_grupo_nao_ve_nada(self):
         self.client.force_authenticate(User.objects.create_user('sem-grupo', password='x'))
-        self.assertEqual(self.client.get('/api/v1/locais/').status_code, 403)
+        self.assertEqual(self.client.get('/api/v1/locations').status_code, 403)
 
     def test_visualizador_consulta_mas_nao_cria(self):
         self.usuario_no_grupo('Visualizador')
-        self.assertEqual(self.client.get('/api/v1/locais/').status_code, 200)
-        resposta = self.client.post('/api/v1/locais/', {'nome': 'Novo', 'tipo_local': 'armazem'})
-        self.assertEqual(resposta.status_code, 403)
+        self.assertEqual(self.client.get('/api/v1/locations').status_code, 200)
+        self.assertEqual(self.client.post('/api/v1/locations', {'name': 'X', 'type': 'farm'}).status_code, 403)
 
     def test_operador_cria_local_mas_nao_cria_fruta(self):
         self.usuario_no_grupo('Operador')
-        resposta = self.client.post('/api/v1/locais/', {'nome': 'Novo', 'tipo_local': 'armazem'})
-        self.assertEqual(resposta.status_code, 201)
-        self.assertEqual(self.client.post('/api/v1/frutas/', {'nome': 'Uva'}).status_code, 403)
+        self.assertEqual(self.client.post('/api/v1/locations', {'name': 'X', 'type': 'farm'}).status_code, 201)
+        self.assertEqual(self.client.post('/api/v1/fruits', {'name': 'Caju'}).status_code, 403)
 
     def test_administrador_cria_fruta(self):
         self.usuario_no_grupo('Administrador')
-        self.assertEqual(self.client.post('/api/v1/frutas/', {'nome': 'Uva'}).status_code, 201)
+        self.assertEqual(self.client.post('/api/v1/fruits', {'name': 'Caju'}).status_code, 201)
 
-    def test_visualizador_nao_inicia_transporte_mas_operador_inicia(self):
-        url = f"/api/v1/transportes/{self.c['transporte'].id}/iniciar/"
+    def test_visualizador_nao_inicia_viagem_mas_operador_inicia(self):
+        url = f"/api/v1/shipments/{self.c['viagem'].id}/start"
         self.usuario_no_grupo('Visualizador')
         self.assertEqual(self.client.post(url).status_code, 403)
         self.usuario_no_grupo('Operador')
-        resposta = self.client.post(url)
-        self.assertEqual(resposta.status_code, 200)
-        self.assertEqual(resposta.data['status'], 'em_andamento')
+        self.assertEqual(self.client.post(url).status_code, 200)
 
 
-class FluxoDaApiTest(APITestCase):
-    """Do cadastro ate o dashboard: leitura entra, alerta nasce, resumo reflete."""
+class ApiFlowTest(APITestCase):
+    """Do cadastro ao dashboard: leitura entra, alerta nasce, resumo reflete."""
 
     def setUp(self):
         call_command('criar_grupos', verbosity=0)
-        self.c = montar_cenario(status='planejado')
-        admin = User.objects.create_user('admin', password='x')
+        self.c = montar_cenario(status='planned')
+        admin = User.objects.create_user('admin', password='x', first_name='Ada')
         admin.groups.add(Group.objects.get(name='Administrador'))
         self.client.force_authenticate(admin)
-        self.client.post(f"/api/v1/transportes/{self.c['transporte'].id}/iniciar/")
+        self.client.post(f"/api/v1/shipments/{self.c['viagem'].id}/start")
+        self.url = f"/api/v1/shipments/{self.c['viagem'].id}"
 
     def enviar_leitura(self, temperatura, minutos, sequence=None):
-        """Quem grava leituras e a placa (service), nao um usuario pela API."""
         self.seq = getattr(self, 'seq', 0) + 1
-        return registrar_leitura(
-            device=self.c['dispositivo'], shipment=self.c['transporte'],
+        return register_reading(
+            device=self.c['dispositivo'], shipment=self.c['viagem'],
             sequence=sequence if sequence is not None else self.seq,
             recorded_at=timezone.now() + timedelta(minutes=minutos),
             temperature_c=temperatura, humidity_pct='85',
         )
 
     def test_usuario_nao_grava_leitura_pela_api(self):
-        """POST em /leituras/ nao existe mais: leitura so entra pela placa."""
-        resposta = self.client.post('/api/v1/leituras/', {})
-        self.assertEqual(resposta.status_code, 405)
+        self.assertEqual(self.client.post('/api/v1/readings', {}).status_code, 405)
 
     def test_leituras_fora_da_faixa_geram_alerta_e_status(self):
         self.enviar_leitura('14', 0)
         self.enviar_leitura('14', 1)
+        self.assertEqual(len(self.client.get(f'{self.url}/alerts').data), 1)
+        resumo = self.client.get(f'{self.url}/summary').data
+        self.assertEqual(resumo['metrics']['readings'], 2)
+        self.assertEqual(resumo['current_status'], 'warning')
+        self.assertEqual(resumo['open_alerts'], 1)
+        self.assertEqual(resumo['latest_reading']['temperature_c'], 14.0)
+        self.assertEqual(resumo['device']['uid'], 'esp32-teste')
 
-        alertas = self.client.get(f"/api/v1/transportes/{self.c['transporte'].id}/alertas/").data
-        self.assertEqual(len(alertas), 1)
-
-        resumo = self.client.get(f"/api/v1/transportes/{self.c['transporte'].id}/resumo/").data
-        self.assertEqual(resumo['total_leituras'], 2)
-        self.assertEqual(resumo['status_atual'], 'atencao')
-        self.assertEqual(resumo['alertas_ativos'], 1)
-
-    def test_historico_do_transporte_e_paginado(self):
+    def test_historico_paginado_no_formato_do_plano(self):
         self.enviar_leitura('10', 0)
         self.enviar_leitura('11', 1)
-        historico = self.client.get(f"/api/v1/transportes/{self.c['transporte'].id}/leituras/").data
-        self.assertEqual(historico['count'], 2)
+        corpo = self.client.get(f'{self.url}/readings').json()
+        self.assertEqual(len(corpo['data']), 2)
+        self.assertEqual(corpo['pagination'], {'next': None, 'previous': None, 'count': 2})
 
-    def test_leitura_reenviada_com_o_mesmo_sequence_nao_cria_outra(self):
-        self.enviar_leitura('10', 0, sequence=77)
-        self.enviar_leitura('10', 0, sequence=77)
-        historico = self.client.get(f"/api/v1/transportes/{self.c['transporte'].id}/leituras/").data
-        self.assertEqual(historico['count'], 1)
+    def test_filtro_since_traz_so_as_novas(self):
+        self.enviar_leitura('10', 0)
+        leitura, _ = self.enviar_leitura('11', 1)
+        antes = (leitura.recorded_at - timedelta(seconds=1)).isoformat()
+        corpo = self.client.get(f'{self.url}/readings', {'since': antes}).json()
+        self.assertEqual(len(corpo['data']), 1)
 
-    def test_reconhecer_alerta(self):
+    def test_reconhecer_e_resolver_alerta(self):
         self.enviar_leitura('14', 0)
         self.enviar_leitura('14', 1)
-        alerta = self.client.get('/api/v1/alertas/').data['results'][0]
-        resposta = self.client.post(f"/api/v1/alertas/{alerta['id']}/reconhecer/")
-        self.assertEqual(resposta.status_code, 200)
-        self.assertEqual(resposta.data['status'], 'reconhecido')
-        self.assertEqual(resposta.data['reconhecido_por_nome'], 'admin')
+        alerta = self.client.get('/api/v1/alerts').json()['data'][0]
+        resposta = self.client.post(f"/api/v1/alerts/{alerta['id']}/ack")
+        self.assertEqual((resposta.status_code, resposta.data['status']), (200, 'acknowledged'))
+        self.assertEqual(resposta.data['acknowledged_by_name'], 'Ada')
+        self.assertEqual(self.client.post(f"/api/v1/alerts/{alerta['id']}/resolve").data['status'], 'resolved')
 
     def test_carga_incompativel_e_recusada(self):
         from decimal import Decimal
-        from dominio.models import ConfiguracaoLimite, Fruta
-        gelada = Fruta.objects.create(nome='Fruta gelada')
-        ConfiguracaoLimite.objects.create(
-            fruta=gelada, temperatura_minima=Decimal('0'), temperatura_maxima=Decimal('4'),
-            umidade_minima=Decimal('90'), umidade_maxima=Decimal('95'),
+
+        from dominio.models import Fruit, FruitParameter
+        gelada = Fruit.objects.create(name='Fruta gelada')
+        FruitParameter.objects.create(
+            fruit=gelada, temperature_min_c=Decimal('0'), temperature_max_c=Decimal('4'),
+            humidity_min_pct=Decimal('90'), humidity_max_pct=Decimal('95'),
         )
-        resposta = self.client.post('/api/v1/cargas/', {
-            'transporte': self.c['transporte'].id, 'fruta': gelada.id, 'lote': 'X', 'quantidade_kg': '10',
+        resposta = self.client.post('/api/v1/shipment-items', {
+            'shipment': self.c['viagem'].id, 'fruit': gelada.id, 'lot': 'X', 'quantity_kg': '10',
         })
         self.assertEqual(resposta.status_code, 400)
 
+    def test_erro_nao_vem_embrulhado_em_data(self):
+        corpo = self.client.post(f'{self.url}/start').json()  # ja esta ativa
+        self.assertIn('detail', corpo)
+        self.assertNotIn('data', corpo)
+
     def test_documentacao_swagger_so_para_staff_fora_do_debug(self):
-        # Nos testes DEBUG=False: a documentacao exige usuario staff.
         self.assertEqual(self.client.get('/api/schema/').status_code, 403)
         self.client.force_authenticate(User.objects.create_user('staff', password='x', is_staff=True))
         self.assertEqual(self.client.get('/api/schema/').status_code, 200)

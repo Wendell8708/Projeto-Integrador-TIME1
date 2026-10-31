@@ -1,12 +1,13 @@
-from django.urls import path
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from django.urls import re_path
+from rest_framework_simplejwt.views import TokenRefreshView
 
-from .views import MeView
+from .views import LoginView, MeView
 
+# As rotas aceitam com ou sem barra no final (/auth/login e /auth/login/).
 urlpatterns = [
-    # Login: recebe {"username", "password"} e devolve {"access", "refresh"}.
-    path('token/', TokenObtainPairView.as_view(), name='token_obtain'),
-    # Renova o access token usando o refresh token.
-    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    path('me/', MeView.as_view(), name='me'),
+    # Login: recebe {"email", "password"}; devolve {"access", "refresh", "user"}.
+    re_path(r'^login/?$', LoginView.as_view(), name='auth-login'),
+    # Renova o access token: recebe {"refresh"}; devolve {"access"}.
+    re_path(r'^refresh/?$', TokenRefreshView.as_view(), name='auth-refresh'),
+    re_path(r'^me/?$', MeView.as_view(), name='auth-me'),
 ]

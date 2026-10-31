@@ -1,42 +1,78 @@
 from decimal import Decimal
 
+from django.contrib.auth.models import User
 from django.test import TestCase
+from rest_framework.test import APITestCase
 
-from dominio.models import ConfiguracaoLimite, Fruta
+from dominio.models import Fruit, FruitParameter
 from piADS04.tests_utils import montar_cenario
 
-from .services import CargaIncompativel, faixa_ideal, faixa_ideal_de_frutas
+from .models import Shipment, ShipmentItem
+from .services import IncompatibleCargo, fruit_range, fruit_range_for
 
 
-class FaixaIdealTest(TestCase):
+class FruitRangeTest(TestCase):
     def setUp(self):
         self.c = montar_cenario()
 
     def test_uma_fruta_usa_a_propria_faixa(self):
-        faixa = faixa_ideal(self.c['transporte'])
-        self.assertEqual((faixa.temperatura_minima, faixa.temperatura_maxima), (Decimal('8'), Decimal('12')))
+        faixa = fruit_range(self.c['viagem'])
+        self.assertEqual((faixa.temperature_min_c, faixa.temperature_max_c), (Decimal('8'), Decimal('12')))
+        self.assertEqual(faixa.impact_max_g, Decimal('2.5'))
 
-    def test_carga_mista_usa_a_intersecao(self):
-        uva = Fruta.objects.create(nome='Uva')
-        ConfiguracaoLimite.objects.create(
-            fruta=uva, temperatura_minima=Decimal('10'), temperatura_maxima=Decimal('14'),
-            umidade_minima=Decimal('85'), umidade_maxima=Decimal('95'),
-            margem_critica_temperatura=Decimal('2'),
+    def test_carga_mista_usa_a_intersecao_e_o_mais_rigoroso(self):
+        uva = Fruit.objects.create(name='Uva')
+        FruitParameter.objects.create(
+            fruit=uva, temperature_min_c=Decimal('10'), temperature_max_c=Decimal('14'),
+            humidity_min_pct=Decimal('85'), humidity_max_pct=Decimal('95'),
+            temperature_critical_margin_c=Decimal('2'), impact_max_g=Decimal('1.5'),
         )
-        faixa = faixa_ideal_de_frutas([self.c['fruta'].id, uva.id])
-        self.assertEqual((faixa.temperatura_minima, faixa.temperatura_maxima), (Decimal('10'), Decimal('12')))
-        self.assertEqual((faixa.umidade_minima, faixa.umidade_maxima), (Decimal('85'), Decimal('90')))
-        self.assertEqual(faixa.margem_critica_temperatura, Decimal('2'))  # a mais rigorosa
+        faixa = fruit_range_for([self.c['fruta'].id, uva.id])
+        self.assertEqual((faixa.temperature_min_c, faixa.temperature_max_c), (Decimal('10'), Decimal('12')))
+        self.assertEqual((faixa.humidity_min_pct, faixa.humidity_max_pct), (Decimal('85'), Decimal('90')))
+        self.assertEqual(faixa.temperature_critical_margin_c, Decimal('2'))
+        self.assertEqual(faixa.impact_max_g, Decimal('1.5'))
 
     def test_frutas_sem_faixa_em_comum_levantam_erro(self):
-        gelada = Fruta.objects.create(nome='Fruta gelada')
-        ConfiguracaoLimite.objects.create(
-            fruta=gelada, temperatura_minima=Decimal('0'), temperatura_maxima=Decimal('4'),
-            umidade_minima=Decimal('90'), umidade_maxima=Decimal('95'),
+        gelada = Fruit.objects.create(name='Fruta gelada')
+        FruitParameter.objects.create(
+            fruit=gelada, temperature_min_c=Decimal('0'), temperature_max_c=Decimal('4'),
+            humidity_min_pct=Decimal('90'), humidity_max_pct=Decimal('95'),
         )
-        with self.assertRaises(CargaIncompativel):
-            faixa_ideal_de_frutas([self.c['fruta'].id, gelada.id])
+        with self.assertRaises(IncompatibleCargo):
+            fruit_range_for([self.c['fruta'].id, gelada.id])
 
-    def test_sem_limites_cadastrados_devolve_none(self):
-        outra = Fruta.objects.create(nome='Sem limite')
-        self.assertIsNone(faixa_ideal_de_frutas([outra.id]))
+    def test_sem_parametros_ativos_devolve_none(self):
+        outra = Fruit.objects.create(name='Sem limite')
+        self.assertIsNone(fruit_range_for([outra.id]))
+
+
+class ShipmentLifecycleTest(APITestCase):
+    def setUp(self):
+        self.c = montar_cenario(status='planned')
+        self.client.force_authenticate(User.objects.create_superuser('root', 'root@example.com', 'x'))
+
+    def test_iniciar_e_encerrar(self):
+        url = f"/api/v1/shipments/{self.c['viagem'].id}"
+        self.assertEqual(self.client.post(f'{url}/start').data['status'], 'active')
+        self.assertEqual(self.client.post(f'{url}/finish').data['status'], 'completed')
+
+    def test_dispositivo_nao_fica_em_duas_viagens_ativas(self):
+        outra = Shipment.objects.create(
+            origin=self.c['fazenda'], destination=self.c['centro'], vehicle=self.c['veiculo'],
+            device=self.c['dispositivo'], started_at=self.c['inicio'],
+        )
+        ShipmentItem.objects.create(shipment=outra, fruit=self.c['fruta'], lot='L2', quantity_kg=Decimal('10'))
+        self.assertEqual(self.client.post(f"/api/v1/shipments/{self.c['viagem'].id}/start").status_code, 200)
+        resposta = self.client.post(f'/api/v1/shipments/{outra.id}/start')
+        self.assertEqual(resposta.status_code, 400)
+        self.assertIn('outra viagem', resposta.data['detail'])
+
+    def test_quem_cria_a_viagem_fica_registrado(self):
+        resposta = self.client.post('/api/v1/shipments', {
+            'origin': self.c['fazenda'].id, 'destination': self.c['centro'].id,
+            'vehicle': self.c['veiculo'].id, 'device': self.c['dispositivo'].id,
+            'started_at': '2026-11-01T10:00:00Z',
+        })
+        self.assertEqual(resposta.status_code, 201)
+        self.assertEqual(Shipment.objects.get(pk=resposta.data['id']).created_by.username, 'root')

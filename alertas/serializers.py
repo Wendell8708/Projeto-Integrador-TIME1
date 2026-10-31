@@ -4,13 +4,13 @@ from .models import Alert
 
 
 class AlertSerializer(serializers.ModelSerializer):
-    reconhecido_por_nome = serializers.CharField(source='reconhecido_por.username', read_only=True, default=None)
+    acknowledged_by_name = serializers.CharField(source='acknowledged_by.get_full_name', read_only=True, default=None)
 
     class Meta:
         model = Alert
         fields = [
-            'id', 'transporte', 'leitura', 'tipo', 'severidade', 'status',
-            'valor_medido', 'limite_violado',
-            'criado_em', 'reconhecido_por_nome', 'reconhecido_em', 'resolvido_em',
+            'id', 'shipment', 'reading', 'shock_event', 'type', 'severity', 'status', 'message',
+            'measured_value', 'violated_limit', 'created_at',
+            'acknowledged_by', 'acknowledged_by_name', 'acknowledged_at', 'resolved_at',
         ]
         read_only_fields = fields  # alertas sao criados pelo sistema, nunca pela API

@@ -28,6 +28,14 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv(
 # Em producao: https://<nome>.onrender.com
 CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 
+# No Render, o endereco publico do servico (ex.: projeto-integrador-time1.onrender.com)
+# vem nesta variavel, criada pelo proprio Render. Assim nao da "Bad Request (400)"
+# mesmo se ALLOWED_HOSTS e CSRF_TRUSTED_ORIGINS nao forem preenchidos.
+RENDER_EXTERNAL_HOSTNAME = config('RENDER_EXTERNAL_HOSTNAME', default='')
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+    CSRF_TRUSTED_ORIGINS.append(f'https://{RENDER_EXTERNAL_HOSTNAME}')
+
 # Atras do proxy do Render, o Django recebe HTTP puro. Este cabecalho (que o proxy
 # define) avisa que o acesso original do usuario foi por HTTPS.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
@@ -96,10 +104,27 @@ REST_FRAMEWORK = {
         'django_filters.rest_framework.DjangoFilterBackend',
         'rest_framework.filters.OrderingFilter',
     ),
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    # Respostas no formato do plano: {"data": ...} e paginacao com "pagination.next" (piADS04/api.py).
+    'DEFAULT_RENDERER_CLASSES': (
+        'piADS04.api.EnvelopeRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',
+    ),
+    'DEFAULT_PAGINATION_CLASS': 'piADS04.api.StandardPagination',
     'PAGE_SIZE': 50,
+    # Limites de requisicoes: login por IP (forca bruta) e telemetria por placa.
+    'DEFAULT_THROTTLE_RATES': {
+        'login': config('THROTTLE_LOGIN', default='10/min'),
+        'iot': config('THROTTLE_IOT', default='120/min'),
+    },
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
+
+# --- IoT -------------------------------------------------------------------
+
+# Placa sem comunicar ha mais que isso aparece como "sem comunicacao" (online = false).
+DEVICE_ONLINE_TOLERANCE_MINUTES = config('DEVICE_ONLINE_TOLERANCE_MINUTES', default=10, cast=int)
+# Maximo de itens (leituras + impactos) por lote enviado pela placa.
+IOT_MAX_BATCH_ITEMS = config('IOT_MAX_BATCH_ITEMS', default=200, cast=int)
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
@@ -109,9 +134,10 @@ SIMPLE_JWT = {
 
 SPECTACULAR_SETTINGS = {
     'TITLE': 'piADS04 - API de monitoramento de transporte de frutas',
-    'DESCRIPTION': 'Temperatura e umidade durante o transporte, da fazenda ao centro de distribuicao.',
+    'DESCRIPTION': 'Temperatura, umidade e impactos durante o transporte de frutas. Rotas da placa: /api/v1/iot/* (cabecalho X-Device-Key).',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
+    'ENUM_NAME_OVERRIDES': {'ConnectionTypeEnum': 'iot.models.Device.CONNECTION_CHOICES'},
 }
 
 

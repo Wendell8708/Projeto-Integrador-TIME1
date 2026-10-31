@@ -5,35 +5,37 @@ from decimal import Decimal
 
 from django.utils import timezone
 
-from dominio.models import ConfiguracaoLimite, Fruta, Local, Veiculo
-from iot.models import Device
-from transporte.models import Carga, Shipment
+from dominio.models import Fruit, FruitParameter, Location, Vehicle
+from iot.models import Device, DeviceCredential
+from transporte.models import Shipment, ShipmentItem
 
 
-def montar_cenario(com_limites=True, status='em_andamento'):
+def montar_cenario(com_limites=True, status='active'):
     """
-    Cria fazenda, centro de distribuicao, veiculo, dispositivo, uma fruta com
-    faixa de 8 a 12 C (margem 3) e 80 a 90 % (margem 10) e uma viagem.
-    A viagem comecou ha 1 hora.
+    Cria fazenda, centro de distribuicao, veiculo, placa (com chave), uma fruta com
+    faixa de 8 a 12 C (margem 3), 80 a 90 % (margem 10), impacto maximo 2.5 g, e uma
+    viagem que comecou ha 1 hora.
     """
-    fazenda = Local.objects.create(nome='Fazenda Teste', tipo_local='fazenda')
-    centro = Local.objects.create(nome='CD Teste', tipo_local='centro_distribuicao')
-    veiculo = Veiculo.objects.create(placa='ABC1D23')
-    dispositivo = Device.objects.create(nome='ESP32 teste', identificador='esp32-teste')
-    fruta = Fruta.objects.create(nome='Manga')
+    fazenda = Location.objects.create(name='Fazenda Teste', type='farm')
+    centro = Location.objects.create(name='CD Teste', type='distribution_center')
+    veiculo = Vehicle.objects.create(plate='ABC1D23')
+    dispositivo = Device.objects.create(name='ESP32 teste', uid='esp32-teste')
+    _, chave = DeviceCredential.gerar(dispositivo)
+    fruta = Fruit.objects.create(name='Manga')
     if com_limites:
-        ConfiguracaoLimite.objects.create(
-            fruta=fruta,
-            temperatura_minima=Decimal('8'), temperatura_maxima=Decimal('12'),
-            umidade_minima=Decimal('80'), umidade_maxima=Decimal('90'),
+        FruitParameter.objects.create(
+            fruit=fruta,
+            temperature_min_c=Decimal('8'), temperature_max_c=Decimal('12'),
+            humidity_min_pct=Decimal('80'), humidity_max_pct=Decimal('90'),
+            impact_max_g=Decimal('2.5'),
         )
     inicio = timezone.now() - timedelta(hours=1)
-    transporte = Shipment.objects.create(
-        origem=fazenda, destino=centro, veiculo=veiculo, dispositivo=dispositivo,
-        data_hora_inicio=inicio, status=status,
+    viagem = Shipment.objects.create(
+        origin=fazenda, destination=centro, vehicle=veiculo, device=dispositivo,
+        started_at=inicio, status=status,
     )
-    Carga.objects.create(transporte=transporte, fruta=fruta, lote='L1', quantidade_kg=Decimal('500'))
+    ShipmentItem.objects.create(shipment=viagem, fruit=fruta, lot='L1', quantity_kg=Decimal('500'))
     return {
         'fazenda': fazenda, 'centro': centro, 'veiculo': veiculo, 'dispositivo': dispositivo,
-        'fruta': fruta, 'transporte': transporte, 'inicio': inicio,
+        'chave': chave, 'fruta': fruta, 'viagem': viagem, 'inicio': inicio,
     }
