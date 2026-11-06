@@ -179,3 +179,36 @@ class ApiFlowTest(APITestCase):
         self.assertEqual(self.client.get('/api/schema/').status_code, 403)
         self.client.force_authenticate(User.objects.create_user('staff', password='x', is_staff=True))
         self.assertEqual(self.client.get('/api/schema/').status_code, 200)
+
+
+class SwaggerWithAdminSessionTest(APITestCase):
+    """
+    O Swagger (/api/docs/) abre no navegador, que so manda o cookie de sessao do /admin/
+    (nao o cabecalho Bearer). Com DEBUG=False, so staff logado enxerga a documentacao.
+    """
+
+    def setUp(self):
+        cache.clear()  # outro teste enche o contador do limite de login; sem isto o login aqui levaria 429
+
+    def test_sem_login_responde_403_e_nao_401(self):
+        # 403 (e nao 401) porque a sessao e o primeiro metodo de autenticacao da documentacao.
+        self.assertEqual(self.client.get('/api/docs/').status_code, 403)
+        self.assertEqual(self.client.get('/api/schema/').status_code, 403)
+
+    def test_usuario_comum_logado_na_sessao_nao_ve_a_documentacao(self):
+        User.objects.create_user('comum', password='senha-forte-123')
+        self.client.login(username='comum', password='senha-forte-123')
+        self.assertEqual(self.client.get('/api/docs/').status_code, 403)
+
+    def test_staff_logado_pela_sessao_do_admin_ve_a_documentacao(self):
+        User.objects.create_user('chefe', password='senha-forte-123', is_staff=True)
+        self.assertTrue(self.client.login(username='chefe', password='senha-forte-123'))  # cookie de sessao
+        self.assertEqual(self.client.get('/api/docs/').status_code, 200)
+        self.assertEqual(self.client.get('/api/schema/').status_code, 200)
+
+    def test_staff_com_jwt_tambem_ve_a_documentacao(self):
+        User.objects.create_user('chefe', password='senha-forte-123', is_staff=True, email='chefe@exemplo.com')
+        token = self.client.post('/api/v1/auth/login', {'email': 'chefe@exemplo.com', 'password': 'senha-forte-123'}
+                                 ).json()['data']['access']
+        resposta = self.client.get('/api/schema/', HTTP_AUTHORIZATION=f'Bearer {token}')
+        self.assertEqual(resposta.status_code, 200)

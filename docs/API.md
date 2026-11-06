@@ -1,6 +1,7 @@
 # API — guia rápido para o front e para a placa
 
-Base: `https://projeto-integrador-time1.onrender.com/api/v1` · Swagger: `/api/docs/` (login de staff).
+Base: `https://projeto-integrador-time1.onrender.com/api/v1` · Swagger: `/api/docs/`
+(em produção: faça login em `/admin/` com um usuário **staff** e volte para `/api/docs/`).
 
 - Sucesso vem em `{"data": ...}`. Listas: `{"data": [...], "pagination": {"next", "previous", "count"}}`.
 - Erro vem como `{"detail": "..."}` ou `{"campo": ["..."]}`.
@@ -67,3 +68,5 @@ A placa apaga da fila local só o que vier nessas listas. Reenviar não duplica.
 Regras para a placa: `recorded_at` em UTC; `sequence` salvo na flash e nunca reiniciado;
 a viagem precisa estar `active` (ou `completed`, para dado atrasado).
 A chave sai do comando `python manage.py criar_credencial_dispositivo <uid>` ou da seed.
+
+Passo a passo do teste com a placa real: [`TESTE_PLACA.md`](TESTE_PLACA.md).
