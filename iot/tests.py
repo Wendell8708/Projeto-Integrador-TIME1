@@ -1,5 +1,9 @@
+from datetime import timedelta
+from decimal import Decimal
+
 from django.core.cache import cache
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from alertas.models import Alert
@@ -133,3 +137,48 @@ class DeviceCredentialTest(TestCase):
         credencial, chave = DeviceCredential.gerar(dispositivo)
         self.assertNotEqual(credencial.secret_hash, chave)
         self.assertEqual(credencial.secret_hash, DeviceCredential.hash_da_chave(chave))
+
+
+class AdminListasLeves(TestCase):
+    """
+    As listas do admin nao podem fazer consultas por linha: no Render, com o banco no
+    Neon, isso estourava o tempo limite do gunicorn (500 em /admin/iot/reading/).
+    """
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from iot.models import Reading
+        from transporte.models import Shipment
+
+        cenario = montar_cenario()
+        self.viagem = cenario['viagem']
+        for i in range(5):  # varias viagens: o filtro antigo montava o nome de todas
+            Shipment.objects.create(origin=cenario['fazenda'], destination=cenario['centro'],
+                                    vehicle=cenario['veiculo'], device=cenario['dispositivo'],
+                                    started_at=timezone.now(), status='completed')
+        agora = timezone.now()
+        Reading.objects.bulk_create([
+            Reading(device=cenario['dispositivo'], shipment=self.viagem, sequence=i,
+                    recorded_at=agora - timedelta(seconds=30 * i),
+                    temperature_c=Decimal('29'), humidity_pct=Decimal('59'))
+            for i in range(1, 61)
+        ])
+        self.client.force_login(User.objects.create_superuser('admin', 'admin@exemplo.com', 'x'))
+
+    def test_lista_de_leituras_tem_poucas_consultas(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        with CaptureQueriesContext(connection) as consultas:
+            resposta = self.client.get('/admin/iot/reading/')
+        self.assertEqual(resposta.status_code, 200)
+        self.assertLess(len(consultas), 15)
+
+    def test_filtrar_leituras_por_viagem(self):
+        resposta = self.client.get(f'/admin/iot/reading/?shipment__id__exact={self.viagem.id}')
+        self.assertEqual(resposta.status_code, 200)
+
+    def test_outras_listas_abrem(self):
+        for url in ['/admin/iot/shockevent/', '/admin/alertas/alert/', '/admin/transporte/shipment/',
+                    f'/admin/iot/reading/{self.viagem.readings.first().id}/change/']:
+            self.assertEqual(self.client.get(url).status_code, 200, url)
