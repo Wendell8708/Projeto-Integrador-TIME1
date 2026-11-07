@@ -173,6 +173,8 @@ DATABASES = {
         'PORT': config('DB_PORT', default='5432'),
         # Local: 'prefer' (usa SSL se o servidor tiver). Neon/producao: DB_SSLMODE=require.
         'OPTIONS': {'sslmode': config('DB_SSLMODE', default='prefer')},
+        'CONN_MAX_AGE': config('DB_CONN_MAX_AGE', default=60, cast=int),
+        'CONN_HEALTH_CHECKS':True,
     }
 }
 
