@@ -11,5 +11,6 @@ class ShipmentItemInline(admin.TabularInline):
 @admin.register(Shipment)
 class ShipmentAdmin(admin.ModelAdmin):
     list_display = ['id', 'origin', 'destination', 'vehicle', 'device', 'status', 'started_at']
+    list_select_related = ['origin', 'destination', 'vehicle', 'device']
     list_filter = ['status']
     inlines = [ShipmentItemInline]
