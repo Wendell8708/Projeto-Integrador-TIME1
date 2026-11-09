@@ -212,3 +212,206 @@ class SwaggerWithAdminSessionTest(APITestCase):
                                  ).json()['data']['access']
         resposta = self.client.get('/api/schema/', HTTP_AUTHORIZATION=f'Bearer {token}')
         self.assertEqual(resposta.status_code, 200)
+
+from unittest.mock import patch
+
+from django.contrib.auth.models import User
+from django.core.cache import cache
+from django.test import override_settings
+
+from rest_framework.test import APITestCase
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
+
+
+class LogoutETokensTest(APITestCase):
+
+    def setUp(self):
+        cache.clear()
+
+        self.usuario = User.objects.create_user(
+            username='usuario_logout_teste',
+            email='logout@exemplo.com',
+            password='SenhaForte123!'
+        )
+
+        self.refresh = RefreshToken.for_user(self.usuario)
+
+        self.client.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {self.refresh.access_token}'
+        )
+
+    def test_logout_com_token_valido(self):
+        resposta = self.client.post(
+            '/api/v1/auth/logout',
+            {'refresh': str(self.refresh)},
+            format='json'
+        )
+
+        self.assertEqual(resposta.status_code, 200)
+
+        with self.assertRaises(TokenError):
+            RefreshToken(str(self.refresh))
+
+    def test_logout_sem_refresh_token(self):
+        resposta = self.client.post(
+            '/api/v1/auth/logout',
+            {},
+            format='json'
+        )
+
+        self.assertEqual(resposta.status_code, 400)
+
+    def test_logout_sem_autenticacao(self):
+        self.client.credentials()
+
+        resposta = self.client.post(
+            '/api/v1/auth/logout',
+            {'refresh': str(self.refresh)},
+            format='json'
+        )
+
+        self.assertEqual(resposta.status_code, 401)
+
+    def test_logout_com_refresh_de_outro_usuario(self):
+        outro = User.objects.create_user(
+            username='outro_usuario_logout',
+            password='SenhaForte123!'
+        )
+
+        token_outro = RefreshToken.for_user(outro)
+
+        resposta = self.client.post(
+            '/api/v1/auth/logout',
+            {'refresh': str(token_outro)},
+            format='json'
+        )
+
+        self.assertEqual(resposta.status_code, 400)
+
+
+class RecuperacaoDeSenhaTest(APITestCase):
+
+    def setUp(self):
+        cache.clear()
+
+        self.usuario = User.objects.create_user(
+            username='usuario_recuperacao',
+            email='recuperacao@exemplo.com',
+            password='SenhaAntiga123!'
+        )
+
+        self.url_solicitar = '/api/v1/auth/password-reset'
+        self.url_confirmar = '/api/v1/auth/password-reset/confirm'
+
+    @override_settings(PASSWORD_RESET_TIMEOUT=3600)
+    @patch('usuarios.views.urlopen')
+    @patch('usuarios.views.config')
+    def test_solicitar_recuperacao(
+        self,
+        mock_config,
+        mock_urlopen
+    ):
+        valores = {
+            'PASSWORD_RESET_URL':
+                'http://localhost:5173/redefinir-senha',
+            'RESEND_API_KEY': 'chave-ficticia',
+            'RESEND_FROM_EMAIL': 'teste@exemplo.com',
+        }
+
+        mock_config.side_effect = (
+            lambda chave, default='':
+            valores.get(chave, default)
+        )
+
+        resposta = self.client.post(
+            self.url_solicitar,
+            {'email': self.usuario.email},
+            format='json'
+        )
+
+        self.assertEqual(resposta.status_code, 200)
+        mock_urlopen.assert_called_once()
+
+    def test_email_inexistente_nao_revela_usuario(self):
+        resposta = self.client.post(
+            self.url_solicitar,
+            {'email': 'naoexiste@exemplo.com'},
+            format='json'
+        )
+
+        self.assertEqual(resposta.status_code, 200)
+        self.assertIn('detail', resposta.data)
+
+    def test_redefinir_senha_com_token_valido(self):
+        from django.contrib.auth.tokens import (
+            default_token_generator
+        )
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+
+        uid = urlsafe_base64_encode(
+            force_bytes(self.usuario.pk)
+        )
+
+        token = default_token_generator.make_token(
+            self.usuario
+        )
+
+        resposta = self.client.post(
+            self.url_confirmar,
+            {
+                'uid': uid,
+                'token': token,
+                'password': 'NovaSenhaForte123!',
+            },
+            format='json'
+        )
+
+        self.assertEqual(resposta.status_code, 200)
+
+        self.usuario.refresh_from_db()
+
+        self.assertTrue(
+            self.usuario.check_password('NovaSenhaForte123!')
+        )
+
+    def test_redefinir_senha_com_token_invalido(self):
+        resposta = self.client.post(
+            self.url_confirmar,
+            {
+                'uid': 'invalido',
+                'token': 'token-invalido',
+                'password': 'NovaSenhaForte123!',
+            },
+            format='json'
+        )
+
+        self.assertEqual(resposta.status_code, 400)
+
+    def test_redefinir_senha_fraca(self):
+        from django.contrib.auth.tokens import (
+            default_token_generator
+        )
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+
+        uid = urlsafe_base64_encode(
+            force_bytes(self.usuario.pk)
+        )
+
+        token = default_token_generator.make_token(
+            self.usuario
+        )
+
+        resposta = self.client.post(
+            self.url_confirmar,
+            {
+                'uid': uid,
+                'token': token,
+                'password': '123',
+            },
+            format='json'
+        )
+
+        self.assertEqual(resposta.status_code, 400)

@@ -76,3 +76,94 @@ class ShipmentLifecycleTest(APITestCase):
         })
         self.assertEqual(resposta.status_code, 201)
         self.assertEqual(Shipment.objects.get(pk=resposta.data['id']).created_by.username, 'root')
+
+
+
+class ShipmentCreateWithItemsTest(APITestCase):
+
+    def setUp(self):
+        self.c = montar_cenario(status='planned')
+
+        self.client.force_authenticate(
+            User.objects.create_superuser(
+                'admin_teste',
+                'admin_teste@example.com',
+                'senha-teste'
+            )
+        )
+
+    def test_criar_viagem_com_itens(self):
+        quantidade_antes = Shipment.objects.count()
+
+        resposta = self.client.post(
+            '/api/v1/shipments',
+            {
+                'origin': self.c['fazenda'].id,
+                'destination': self.c['centro'].id,
+                'vehicle': self.c['veiculo'].id,
+                'device': self.c['dispositivo'].id,
+                'started_at': '2026-11-15T10:00:00Z',
+                'items': [
+                    {
+                        'fruit': self.c['fruta'].id,
+                        'lot': 'LOTE-001',
+                        'quantity_kg': '500.00'
+                    }
+                ]
+            },
+            format='json'
+        )
+
+        self.assertEqual(
+            resposta.status_code,
+            201,
+            resposta.data
+        )
+
+        self.assertEqual(
+            Shipment.objects.count(),
+            quantidade_antes + 1
+        )
+
+        viagem = Shipment.objects.get(
+            pk=resposta.data['id']
+        )
+
+        self.assertEqual(viagem.items.count(), 1)
+        self.assertEqual(
+            viagem.items.first().lot,
+            'LOTE-001'
+        )
+
+    def test_rejeitar_lote_duplicado(self):
+        quantidade_antes = Shipment.objects.count()
+
+        resposta = self.client.post(
+            '/api/v1/shipments',
+            {
+                'origin': self.c['fazenda'].id,
+                'destination': self.c['centro'].id,
+                'vehicle': self.c['veiculo'].id,
+                'device': self.c['dispositivo'].id,
+                'started_at': '2026-11-15T10:00:00Z',
+                'items': [
+                    {
+                        'fruit': self.c['fruta'].id,
+                        'lot': 'LOTE-001',
+                        'quantity_kg': '100.00'
+                    },
+                    {
+                        'fruit': self.c['fruta'].id,
+                        'lot': 'LOTE-001',
+                        'quantity_kg': '200.00'
+                    }
+                ]
+            },
+            format='json'
+        )
+
+        self.assertEqual(resposta.status_code, 400)
+        self.assertEqual(
+            Shipment.objects.count(),
+            quantidade_antes
+        )
