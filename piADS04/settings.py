@@ -41,6 +41,30 @@ if RENDER_EXTERNAL_HOSTNAME:
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
+
+# --------------------------------------------------
+# CONFIGURAÇÕES DE SEGURANÇA
+# --------------------------------------------------
+
+if DEBUG:
+    # Ambiente local de desenvolvimento
+    SECURE_SSL_REDIRECT = False
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+    SECURE_HSTS_SECONDS = 0
+
+else:
+    # Ambiente de produção (Render)
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
+    # HSTS inicial de 1 hora
+    SECURE_HSTS_SECONDS = 3600
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_HSTS_PRELOAD = False
+
+
 # --- Apps ------------------------------------------------------------------
 
 INSTALLED_APPS = [
@@ -54,6 +78,7 @@ INSTALLED_APPS = [
     # Terceiros
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'django_filters',
     'drf_spectacular',
     'corsheaders',
