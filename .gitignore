@@ -4,3 +4,11 @@ __pycache__/
 *.pyc
 db.sqlite3
 staticfiles/
+.env.teste
+.env.teste
+.env.*
+!.env.example
+
+piADS04/settings_teste_local.py
+*_backup.txt
+verificar_*.py

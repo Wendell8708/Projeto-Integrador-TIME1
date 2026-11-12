@@ -1,24 +1,45 @@
 
+"""
+Views do sistema de monitoramento de transporte de frutas.
+
+Funcionalidades:
+- Criar e gerenciar viagens.
+- Iniciar viagens com limites ambientais congelados.
+- Finalizar viagens com avaliação e fotografias.
+- Consultar indicadores do dashboard.
+- Consultar leituras de temperatura e umidade.
+- Consultar eventos de impacto.
+- Consultar alertas.
+- Gerenciar itens das viagens.
+"""
+
+import logging
+
+import cloudinary
+import cloudinary.uploader
+
+from decouple import config
+
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.response import Response
 from rest_framework.parsers import (
     MultiPartParser,
     FormParser,
     JSONParser,
 )
-
-from decouple import config
-
-import cloudinary
-import cloudinary.uploader
+from rest_framework.response import Response
 
 from alertas.serializers import AlertSerializer
-from iot.serializers import ReadingSerializer, ShockEventSerializer
+
+from iot.serializers import (
+    ReadingSerializer,
+    ShockEventSerializer,
+)
 from iot.views import ReadingFilter
+
 from usuarios.permissions import PodeAlterarModelo
 
 from .models import (
@@ -41,6 +62,108 @@ from .services import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
+# =========================================================
+# FUNÇÕES AUXILIARES PARA FOTOGRAFIAS
+# =========================================================
+
+def validar_fotografia(foto):
+    """
+    Valida tamanho, tipo declarado e assinatura
+    inicial de imagens JPEG e PNG.
+    """
+
+    tipos = {
+        'image/jpeg': b'\xff\xd8\xff',
+        'image/png': b'\x89PNG\r\n\x1a\n',
+    }
+
+    if foto.size == 0:
+        return 'A fotografia está vazia.'
+
+    if foto.size > 5 * 1024 * 1024:
+        return 'Cada fotografia deve ter no máximo 5 MB.'
+
+    tipo = getattr(foto, 'content_type', '')
+
+    if tipo not in tipos:
+        return 'São permitidas somente imagens JPEG ou PNG.'
+
+    posicao = foto.tell()
+
+    try:
+        foto.seek(0)
+        assinatura = foto.read(8)
+
+    finally:
+        foto.seek(posicao)
+
+    if not assinatura.startswith(tipos[tipo]):
+        return 'O conteúdo da fotografia não corresponde ao tipo informado.'
+
+    return None
+
+
+def configurar_cloudinary():
+    """
+    Configura o Cloudinary a partir das variáveis
+    de ambiente, sem expor credenciais.
+    """
+
+    cloud_name = config(
+        'CLOUDINARY_CLOUD_NAME',
+        default=''
+    )
+
+    api_key = config(
+        'CLOUDINARY_API_KEY',
+        default=''
+    )
+
+    api_secret = config(
+        'CLOUDINARY_API_SECRET',
+        default=''
+    )
+
+    if not all([cloud_name, api_key, api_secret]):
+        return False
+
+    cloudinary.config(
+        cloud_name=cloud_name,
+        api_key=api_key,
+        api_secret=api_secret,
+        secure=True,
+    )
+
+    return True
+
+
+def excluir_uploads_cloudinary(public_ids):
+    """
+    Tenta excluir fotografias enviadas caso
+    uma operação posterior falhe.
+    """
+
+    for public_id in public_ids:
+        try:
+            cloudinary.uploader.destroy(
+                public_id,
+                resource_type='image'
+            )
+
+        except Exception:
+            logger.exception(
+                'Falha ao remover upload do Cloudinary: %s',
+                public_id
+            )
+
+
+# =========================================================
+# VIEWSET DAS VIAGENS
+# =========================================================
+
 class ShipmentViewSet(viewsets.ModelViewSet):
 
     queryset = (
@@ -49,7 +172,7 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             'origin',
             'destination',
             'vehicle',
-            'device'
+            'device',
         )
         .prefetch_related('items__fruit')
     )
@@ -70,6 +193,10 @@ class ShipmentViewSet(viewsets.ModelViewSet):
     ]
 
     def perform_create(self, serializer):
+        """
+        Registra o usuário responsável pela criação.
+        """
+
         serializer.save(
             created_by=self.request.user
         )
@@ -81,67 +208,80 @@ class ShipmentViewSet(viewsets.ModelViewSet):
     @action(
         detail=True,
         methods=['post'],
-        permission_classes=[PodeAlterarModelo]
+        permission_classes=[PodeAlterarModelo],
     )
     def start(self, request, pk=None):
-
         """
-        Inicia a viagem e congela os limites ambientais.
+        Inicia uma viagem planejada.
+
+        Regras:
+        - A viagem precisa estar planejada.
+        - Precisa possuir ao menos uma fruta.
+        - A carga deve ter limites compatíveis.
+        - Os limites são congelados na viagem.
+        - Um dispositivo não pode ter duas
+          viagens ativas simultaneamente.
         """
 
-        with transaction.atomic():
+        viagem_atual = self.get_object()
 
-            viagem = Shipment.objects.select_for_update().get(
-                pk=self.get_object().pk
-            )
+        try:
+            with transaction.atomic():
 
-            if viagem.status != 'planned':
-                return Response(
-                    {
-                        'detail':
-                        'Só é possível iniciar uma viagem planejada.'
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
+                viagem = (
+                    Shipment.objects
+                    .select_for_update()
+                    .get(pk=viagem_atual.pk)
                 )
 
-            if not viagem.items.exists():
-                return Response(
-                    {
-                        'detail':
-                        'Cadastre ao menos uma fruta antes de iniciar.'
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
+                if viagem.status != 'planned':
+                    return Response(
+                        {
+                            'detail':
+                            'Só é possível iniciar uma viagem planejada.'
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                if not viagem.items.exists():
+                    return Response(
+                        {
+                            'detail':
+                            'Cadastre ao menos uma fruta na carga antes de iniciar.'
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                frutas = viagem.items.values_list(
+                    'fruit_id',
+                    flat=True
                 )
 
-            frutas = viagem.items.values_list(
-                'fruit_id',
-                flat=True
-            )
+                try:
+                    faixa = fruit_range_for(frutas)
 
-            try:
-                faixa = fruit_range_for(frutas)
+                except IncompatibleCargo as erro:
+                    return Response(
+                        {'detail': str(erro)},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
-            except IncompatibleCargo as erro:
-                return Response(
-                    {'detail': str(erro)},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                if faixa is None:
+                    return Response(
+                        {
+                            'detail':
+                            'As frutas não possuem limites ambientais configurados.'
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
-            if faixa is None:
-                return Response(
-                    {
-                        'detail':
-                        'As frutas não possuem limites configurados.'
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                # Congela os limites ambientais.
+                viagem.limits_snapshot = faixa.as_dict()
 
-            viagem.limits_snapshot = faixa.as_dict()
+                # Inicia efetivamente a viagem.
+                viagem.status = 'active'
+                viagem.started_at = timezone.now()
 
-            viagem.status = 'active'
-            viagem.started_at = timezone.now()
-
-            try:
                 viagem.save(
                     update_fields=[
                         'status',
@@ -151,14 +291,17 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                     ]
                 )
 
-            except IntegrityError:
-                return Response(
-                    {
-                        'detail':
-                        'Este dispositivo já possui outra viagem ativa.'
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+        except IntegrityError:
+            # A transação já foi revertida neste ponto.
+            return Response(
+                {
+                    'detail':
+                    'Não foi possível iniciar a viagem. '
+                    'O dispositivo pode estar vinculado '
+                    'a outra viagem ativa.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         return Response(
             self.get_serializer(viagem).data,
@@ -177,18 +320,23 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             MultiPartParser,
             FormParser,
             JSONParser,
-        ]
+        ],
     )
     def finish(self, request, pk=None):
-
         """
-        Finaliza uma viagem com avaliação, observações
-        e fotografias armazenadas no Cloudinary.
+        Finaliza uma viagem em andamento.
+
+        Recebe:
+        - condition: good, damaged ou critical.
+        - notes: observações da chegada.
+        - photos: arquivos JPEG/PNG opcionais.
+
+        As fotografias são armazenadas no Cloudinary.
         """
 
-        viagem = self.get_object()
+        viagem_atual = self.get_object()
 
-        if viagem.status != 'active':
+        if viagem_atual.status != 'active':
             return Response(
                 {
                     'detail':
@@ -197,24 +345,25 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # --------------------------------------------
-        # DADOS DA AVALIAÇÃO
-        # --------------------------------------------
+        # -------------------------------------------------
+        # VALIDAR AVALIAÇÃO
+        # -------------------------------------------------
 
         condition = request.data.get('condition')
         notes = request.data.get('notes', '')
 
-        condicoes_validas = [
+        condicoes_validas = {
             'good',
             'damaged',
             'critical',
-        ]
+        }
 
         if condition not in condicoes_validas:
             return Response(
                 {
                     'detail':
-                    'Informe uma condição válida: good, damaged ou critical.'
+                    'Informe uma condição válida: '
+                    'good, damaged ou critical.'
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
@@ -228,9 +377,18 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # --------------------------------------------
+        if len(notes) > 10000:
+            return Response(
+                {
+                    'detail':
+                    'As observações devem ter no máximo 10000 caracteres.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # -------------------------------------------------
         # VALIDAR FOTOGRAFIAS
-        # --------------------------------------------
+        # -------------------------------------------------
 
         fotos = request.FILES.getlist('photos')
 
@@ -244,138 +402,106 @@ class ShipmentViewSet(viewsets.ModelViewSet):
             )
 
         for foto in fotos:
+            erro = validar_fotografia(foto)
 
-            if foto.content_type not in [
-                'image/jpeg',
-                'image/png',
-            ]:
+            if erro:
                 return Response(
-                    {
-                        'detail':
-                        'São permitidas somente imagens JPEG ou PNG.'
-                    },
+                    {'detail': erro},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            if foto.size > 5 * 1024 * 1024:
-                return Response(
-                    {
-                        'detail':
-                        'Cada fotografia deve ter no máximo 5 MB.'
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+        # -------------------------------------------------
+        # VERIFICAR CLOUDINARY
+        # -------------------------------------------------
 
-        # --------------------------------------------
-        # CONFIGURAR CLOUDINARY
-        # --------------------------------------------
+        if fotos and not configurar_cloudinary():
+            return Response(
+                {
+                    'detail':
+                    'O armazenamento de fotografias '
+                    'não está configurado.'
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
 
         urls_fotos = []
         ids_uploads = []
 
-        if fotos:
+        # -------------------------------------------------
+        # ENVIAR FOTOS PARA CLOUDINARY
+        # -------------------------------------------------
 
-            cloud_name = config(
-                'CLOUDINARY_CLOUD_NAME',
-                default=''
-            )
+        try:
+            for foto in fotos:
 
-            api_key = config(
-                'CLOUDINARY_API_KEY',
-                default=''
-            )
+                foto.seek(0)
 
-            api_secret = config(
-                'CLOUDINARY_API_SECRET',
-                default=''
-            )
-
-            if not all([
-                cloud_name,
-                api_key,
-                api_secret,
-            ]):
-                return Response(
-                    {
-                        'detail':
-                        'Cloudinary não está configurado.'
-                    },
-                    status=status.HTTP_503_SERVICE_UNAVAILABLE
+                resultado = cloudinary.uploader.upload(
+                    foto,
+                    folder=(
+                        f'piads04/viagens/'
+                        f'{viagem_atual.pk}'
+                    ),
+                    resource_type='image',
                 )
 
-            cloudinary.config(
-                cloud_name=cloud_name,
-                api_key=api_key,
-                api_secret=api_secret,
-                secure=True
-            )
-
-            try:
-
-                for foto in fotos:
-
-                    resultado = cloudinary.uploader.upload(
-                        foto,
-                        folder=f'piads04/viagens/{viagem.id}',
-                        resource_type='image'
-                    )
-
-                    urls_fotos.append(
-                        resultado['secure_url']
-                    )
-
-                    ids_uploads.append(
-                        resultado['public_id']
-                    )
-
-            except Exception:
-
-                for public_id in ids_uploads:
-                    try:
-                        cloudinary.uploader.destroy(public_id)
-                    except Exception:
-                        pass
-
-                return Response(
-                    {
-                        'detail':
-                        'Erro ao enviar fotografias.'
-                    },
-                    status=status.HTTP_502_BAD_GATEWAY
+                ids_uploads.append(
+                    resultado['public_id']
                 )
 
-        # --------------------------------------------
-        # GRAVAR AVALIAÇÃO E FINALIZAR
-        # --------------------------------------------
+                urls_fotos.append(
+                    resultado['secure_url']
+                )
 
-        erro = None
-        resultado = None
+        except Exception:
+            logger.exception(
+                'Falha ao enviar fotografias da viagem %s',
+                viagem_atual.pk
+            )
+
+            excluir_uploads_cloudinary(ids_uploads)
+
+            return Response(
+                {
+                    'detail':
+                    'Não foi possível armazenar as fotografias.'
+                },
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+
+        # -------------------------------------------------
+        # SALVAR A AVALIAÇÃO EM UMA TRANSAÇÃO
+        # -------------------------------------------------
+
+        viagem_ja_encerrada = False
 
         try:
             with transaction.atomic():
 
-                viagem = Shipment.objects.select_for_update().get(
-                    pk=viagem.pk
+                viagem = (
+                    Shipment.objects
+                    .select_for_update()
+                    .get(pk=viagem_atual.pk)
                 )
 
                 if viagem.status != 'active':
-                    erro = 'A viagem já foi encerrada.'
+                    viagem_ja_encerrada = True
 
                 else:
-
                     avaliacao = FinalInspection.objects.create(
                         shipment=viagem,
                         user=request.user,
                         condition=condition,
-                        notes=notes
+                        notes=notes,
                     )
 
-                    for url in urls_fotos:
-
-                        InspectionPhoto.objects.create(
+                    InspectionPhoto.objects.bulk_create([
+                        InspectionPhoto(
                             inspection=avaliacao,
-                            file_path=url
+                            file_path=url,
                         )
+                        for url in urls_fotos
+                    ])
 
                     viagem.status = 'completed'
                     viagem.ended_at = timezone.now()
@@ -393,25 +519,17 @@ class ShipmentViewSet(viewsets.ModelViewSet):
                     ).data
 
         except Exception:
-
-            for public_id in ids_uploads:
-                try:
-                    cloudinary.uploader.destroy(public_id)
-                except Exception:
-                    pass
-
+            excluir_uploads_cloudinary(ids_uploads)
             raise
 
-        if erro:
-
-            for public_id in ids_uploads:
-                try:
-                    cloudinary.uploader.destroy(public_id)
-                except Exception:
-                    pass
+        if viagem_ja_encerrada:
+            excluir_uploads_cloudinary(ids_uploads)
 
             return Response(
-                {'detail': erro},
+                {
+                    'detail':
+                    'Esta viagem já foi encerrada.'
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -421,17 +539,16 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         )
 
     # =====================================================
-    # DASHBOARD
+    # RESUMO DO DASHBOARD
     # =====================================================
 
     @action(
         detail=True,
-        methods=['get']
+        methods=['get'],
     )
     def summary(self, request, pk=None):
-
         """
-        Retorna os indicadores do dashboard.
+        Retorna os indicadores da viagem.
         """
 
         viagem = self.get_object()
@@ -446,12 +563,13 @@ class ShipmentViewSet(viewsets.ModelViewSet):
 
     @action(
         detail=True,
-        methods=['get']
+        methods=['get'],
     )
     def readings(self, request, pk=None):
-
         """
-        Histórico de temperatura e umidade.
+        Lista leituras de temperatura e umidade.
+
+        Aceita os filtros de período já existentes.
         """
 
         viagem = self.get_object()
@@ -476,12 +594,11 @@ class ShipmentViewSet(viewsets.ModelViewSet):
 
     @action(
         detail=True,
-        methods=['get']
+        methods=['get'],
     )
     def shocks(self, request, pk=None):
-
         """
-        Eventos de impacto durante o transporte.
+        Retorna os eventos de impacto da viagem.
         """
 
         viagem = self.get_object()
@@ -498,17 +615,16 @@ class ShipmentViewSet(viewsets.ModelViewSet):
         )
 
     # =====================================================
-    # ALERTAS DA VIAGEM
+    # ALERTAS
     # =====================================================
 
     @action(
         detail=True,
-        methods=['get']
+        methods=['get'],
     )
     def alerts(self, request, pk=None):
-
         """
-        Lista os alertas associados à viagem.
+        Retorna os alertas da viagem.
         """
 
         viagem = self.get_object()
@@ -526,16 +642,19 @@ class ShipmentViewSet(viewsets.ModelViewSet):
 
 
 # =========================================================
-# ITENS DA VIAGEM
+# VIEWSET DOS ITENS DAS VIAGENS
 # =========================================================
 
 class ShipmentItemViewSet(viewsets.ModelViewSet):
+    """
+    Gerencia as frutas e os lotes transportados.
+    """
 
     queryset = (
         ShipmentItem.objects
         .select_related(
             'fruit',
-            'shipment'
+            'shipment',
         )
     )
 

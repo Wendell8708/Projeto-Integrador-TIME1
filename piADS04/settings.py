@@ -138,9 +138,10 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 50,
     # Limites de requisicoes: login por IP (forca bruta) e telemetria por placa.
     'DEFAULT_THROTTLE_RATES': {
-        'login': config('THROTTLE_LOGIN', default='10/min'),
-        'iot': config('THROTTLE_IOT', default='120/min'),
-    },
+    'login': config('THROTTLE_LOGIN', default='10/min'),
+    'iot': config('THROTTLE_IOT', default='120/min'),
+    'password_reset': config('THROTTLE_PASSWORD_RESET', default='5/hour'),
+},
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
