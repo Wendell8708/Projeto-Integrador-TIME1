@@ -1,0 +1,28 @@
+﻿========================================================================
+[TIME1] Teste IDOR - usuario A tentando usar a placa e a viagem do usuario B
+API: https://projeto-integrador-time1.onrender.com/api/v1
+Data: 22/11/2026 17:56:33
+========================================================================
+Recursos do B: viagem id=13, placa id=4, veiculo id=4, fazenda id=7
+
+Tentativas do usuario A (deveriam ser recusadas):
+ 404  PROTEGIDO                  ler a viagem do B        GET  /shipments/13
+ 404  PROTEGIDO                  ler o resumo do B        GET  /shipments/13/summary
+ 404  PROTEGIDO                  ler as leituras do B     GET  /shipments/13/readings
+ 404  PROTEGIDO                  ler a placa do B         GET  /devices/4
+ 404  PROTEGIDO                  ler o veiculo do B       GET  /vehicles/4
+ 404  PROTEGIDO                  alterar a fazenda do B   PATCH /locations/7
+ 404  PROTEGIDO                  alterar a viagem do B    PATCH /shipments/13
+ 404  PROTEGIDO                  comandar (encerrar) B    POST /shipments/13/finish
+
+Tentativas de contorno:
+ 403  PROTEGIDO                  placa do B no corpo      PATCH /shipments/12 {"device": 4}
+ 403  PROTEGIDO                  veiculo do B no corpo    PATCH /shipments/12 {"vehicle": 4}
+ 404  PROTEGIDO                  enumeracao: viagem do B e viagem inexistente dao a MESMA resposta
+
+O dono (usuario B) continua usando normalmente:
+ 200  OK (dono usa normalmente)  B le a propria viagem    GET  /shipments/13
+
+------------------------------------------------------------------------
+RESULTADO: PROTEGIDO - as 11 tentativas do A foram recusadas.
+Para repetir: python manage.py preparar_teste_seguranca (reabre a viagem do B).

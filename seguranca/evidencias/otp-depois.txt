@@ -1,0 +1,19 @@
+﻿========================================================================
+[TIME1] Teste OTP - autenticacao em dois fatores no login
+API: https://projeto-integrador-time1.onrender.com/api/v1
+Data: 22/11/2026 17:57:01
+========================================================================
+POST /auth/login (so senha) -> 200
+1. Senha certa e sem codigo: o login NAO devolveu token de acesso -> OK
+2. codigo errado (000000)                       -> 400 OK
+3. codigo valido (497848)                       -> 200 OK
+3b. o mesmo mfa_token depois do login            -> 401 OK
+4. o mesmo codigo de novo (497848)              -> 400 OK
+(aguardando 20 s pelo proximo codigo do autenticador)
+5a. codigo de recuperacao (J26L-SE2J)            -> 200 OK
+5b. o mesmo codigo de recuperacao de novo        -> 400 OK
+C. contorno: recadastrar autenticador so c/ senha -> 400 OK
+
+------------------------------------------------------------------------
+RESULTADO: PROTEGIDO - a senha sozinha nao entra; codigos errados, reusados e
+           de recuperacao ja usados sao recusados; o token temporario vale uma vez.
