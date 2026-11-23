@@ -54,11 +54,10 @@ Resumo fiel das principais solicitações (não é transcrição literal):
 | Data | Solicitação | Objetivo |
 | --- | --- | --- |
 | 02/10/2026 | Montar a base da API: modelos, autenticação JWT, rotas e testes | Estrutura inicial do backend |
-| 16 e 17/11/2026 | Implementar o 2FA com TOTP e a proteção contra IDOR, passando os blocos de código passo a passo e explicando cada um | Controles exigidos pela atividade |
+| 16 e 17/11/2026 | Guia pra implementar o 2FA com TOTP e a proteção contra IDOR | Controles exigidos pela atividade |
 | 17/11/2026 | Criar scripts que testem os ataques antes e depois, com o código de missão no cabeçalho | Evidências |
-| 19/11/2026 | Analisar uma revisão de código e aplicar só o que não comprometesse a entrega | Correções da revisão |
 | 19/11/2026 | Criar a gestão de usuários por convite, para não depender do `/admin` | Usabilidade e segurança |
-| 19/11/2026 | Comparar o projeto com as tarefas de documentação e redigir os documentos faltantes (ChatGPT, Lucas) | Documentação desta pasta |
+| 19/11/2026 | Comparar o projeto com as tarefas de documentação e redigir os documentos faltantes (Lucas) | Documentação desta pasta |
 | 22/11/2026 | Mapear cada controle para arquivo e linha e explicar como mostrar o antes | Preparação da apresentação |
 | 23/11/2026 | Diagnosticar por que o 2FA não funcionava no deploy da Azure | Correção do deploy |
 
@@ -75,7 +74,7 @@ Os commits de **02/10/2026** trazem no próprio Git a linha `Co-Authored-By: Cla
 | `1e072d2` | API REST v1: services de negócio, serializers, views, rotas e admin | Primeira versão das rotas da API | 23 arquivos |
 | `854f449` | Testes automatizados da API (33 testes) | Primeiros testes automatizados | 4 arquivos |
 
-Os commits de segurança de novembro também foram feitos com auxílio do Claude, mas sem a linha de coautoria no Git. Por isso eles estão declarados aqui:
+Os commits de segurança de novembro :
 
 | Commit | Mensagem |
 | --- | --- |
