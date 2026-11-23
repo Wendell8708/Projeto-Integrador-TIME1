@@ -4,7 +4,7 @@
 
 **Arquitetura analisada:** dispositivos enviam leituras para a API Django por meio da credencial `X-Device-Key`; a API persiste os dados no PostgreSQL (Neon); o painel web/PWA acessa a API usando JWT. O projeto também possui integração MQTT, com riscos específicos descritos abaixo.
 
-**Critério de avaliação:** presença do controle foi verificada nos arquivos da versão do projeto fornecida em 19/11/2026. O funcionamento final em ambiente publicado depende de execução dos testes **depois**, cujas evidências não estavam anexadas. Portanto, **mitigada no código** não significa risco eliminado ou deploy validado.
+**Critério de avaliação:** os controles das ameaças 1 e 2 foram testados antes e depois na API publicada (evidências em `seguranca/evidencias/`). **Mitigada** não significa risco eliminado: cada linha indica o que continua aberto.
 
 Classificação STRIDE: **S** = falsificação de identidade; **T** = adulteração; **I** = divulgação indevida de informação; **D** = negação de serviço; **E** = elevação de privilégio.
 
@@ -40,4 +40,4 @@ Referências de código: `usuarios/acesso.py`, `transporte/views.py`, `iot/views
 4. **Roubo de sessão e phishing avançado:** TOTP não impede todos os tipos de comprometimento de sessão; manter proteção dos tokens, políticas de expiração e monitoramento.
 5. **Regressões de autorização:** manter testes de acesso cruzado em novas rotas e nas regras diferenciadas de edição/leitura.
 
-**Pendente para a entrega:** conferir esta lista contra a seção **5.4 de `guia-apresentacao.md`** (não fornecido no ZIP), anexar as evidências posteriores sob responsabilidade de Wendell e executar os testes de segurança em ambiente autorizado. Não registrar uma ameaça como eliminada apenas porque foi mitigada no código.
+**Evidências:** o antes e o depois das ameaças 1 e 2 estão em `seguranca/evidencias/` (`TIME1-otp-*` e `TIME1-idor-*`), e o passo a passo para repetir os testes está no `seguranca/README.md`.
