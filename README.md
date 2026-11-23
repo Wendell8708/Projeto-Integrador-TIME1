@@ -51,7 +51,9 @@ Dois controles implementados para a avaliação de cibersegurança:
 - **Login em dois fatores (2FA com TOTP):** a senha sozinha não entra. O usuário cadastra um app autenticador por QR Code e informa o código de 6 dígitos a cada login. Há códigos de recuperação de uso único, códigos não podem ser reutilizados e as tentativas são limitadas.
 - **Proteção contra IDOR:** cada usuário só vê e comanda o que é dele. Trocar o ID na URL ou no corpo da requisição devolve 404/403, e a tentativa é registrada no log.
 
-Documentação, modelo de ameaças, testes e evidências (antes e depois): [`seguranca/`](seguranca/README.md).
+- **Evidências:** os mesmos ataques rodados contra a API publicada antes (6 de 6 tentativas de IDOR passavam; a senha sozinha entrava) e depois (11 de 11 recusadas; senha sozinha, código errado ou reutilizado não entram).
+
+Documentação, modelo de ameaças, testes, evidências e vídeos de demonstração: [`seguranca/`](seguranca/README.md). Declaração de uso de IA: [`seguranca/uso-de-ia.md`](seguranca/uso-de-ia.md).
 
 ## Estrutura do repositório
 

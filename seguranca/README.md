@@ -4,7 +4,9 @@
 
 Este diretório documenta dois controles implementados na API Django: **autenticação em dois fatores (2FA/TOTP)** e **autorização por recurso para mitigar IDOR**. O objetivo é permitir que outra pessoa identifique os controles, prepare dados sintéticos e reproduza os testes sem acessar dados reais. O modelo de ameaças está em [`modelo-ameacas.md`](modelo-ameacas.md) e o registro de IA em [`uso-de-ia.md`](uso-de-ia.md).
 
-**Status desta documentação:** implementação identificada por inspeção do projeto enviado em 19/11/2026; os resultados de execução *depois* das correções devem ser anexados e validados pela equipe. Não confundir inspeção de código com teste efetivamente executado ou confirmação de deploy.
+**Status (23/11/2026):** os dois controles estão na `main`, publicados no Render e na Azure, e foram testados em produção antes e depois da correção. As evidências estão em `seguranca/evidencias/` (seção 5) e os vídeos na seção 6.
+
+**Código de missão:** o professor não disponibilizou um código de missão para a equipe. O sistema está preparado para recebê-lo: o servidor lê a variável `SECURITY_MISSION_CODE` e os scripts de teste leem `MISSAO`. Nas evidências foi usado o identificador da equipe, `TIME1`.
 
 ## 2. Controles implementados e localização
 
@@ -39,7 +41,7 @@ $env:API_URL = 'http://127.0.0.1:8000/api/v1'
 
 - `TESTE_SENHA`: senha dos usuários sintéticos; o comando exige pelo menos 10 caracteres.
 - `TESTE_TOTP_SEGREDO`: mesmo segredo base32 para os usuários sintéticos com 2FA habilitado; é dado sensível, não registrar seu valor nos documentos nem nas evidências.
-- `MISSAO`: identificador da missão usado no cabeçalho dos resultados e nos logs do servidor (via configuração própria).
+- `MISSAO`: identificador que aparece no cabeçalho dos resultados (o professor não enviou código de missão; usamos `TIME1`). No servidor, o equivalente é `SECURITY_MISSION_CODE`.
 - `API_URL`: endereço-base da API **a ser testada**. O script `seguranca/testes/comum.py` possui um padrão apontando para Render, portanto **defina explicitamente a URL local/de homologação** para evitar alterar dados de produção.
 
 **Preparação do banco de teste:**
@@ -99,39 +101,54 @@ Importe `seguranca/testes/caminho-do-vale.postman_collection.json`. Configure `b
 - **IDOR:** tentativa de acessar um objeto privado de outra conta por ID deve ser negada (normalmente 404; algumas alterações podem retornar 403), sem impedir que o usuário legítimo continue acessando seu próprio objeto.
 - **Limites de requisição:** verificar o escopo `mfa` com testes próprios em ambiente de teste, respeitando que a taxa real depende da configuração e do cache da execução.
 
-Nenhum resultado de execução posterior à correção é afirmado aqui sem arquivo de evidência correspondente.
+Todo resultado citado na seção 5 tem um arquivo de evidência correspondente.
 
 ## 5. Evidências
 
-| Controle | Antes (já localizado no ZIP) | Depois (a anexar pelo responsável) |
+Os mesmos scripts foram rodados contra a API publicada (`https://projeto-integrador-time1.onrender.com/api/v1`) antes e depois dos controles, com os usuários sintéticos `vendedor-a@teste.local` e `vendedor-b@teste.local`.
+
+| Controle | Antes | Depois |
 | --- | --- | --- |
-| Login sem segundo fator | `seguranca/evidencias/otp-antes.txt` — em 17/11/2026 a senha, sozinha, gerou acesso | **Pendente:** nome/caminho do log ou captura do teste 2FA após a correção |
-| IDOR | `seguranca/evidencias/idor-antes.txt` — em 17/11/2026 foram registradas 6/6 tentativas indevidas aceitas | **Pendente:** nome/caminho do log ou captura após a correção, incluindo veículos e locais |
-| Limite OTP e alterações ao vivo | Não há arquivo específico de antes identificado | **Pendente:** evidência de janela OTP, revogação de código e bloqueio por taxa, se exigida |
-| Testes automatizados e vídeo | Não há registro de execução final anexado nesta cópia | **Pendente:** saída dos testes e links/nomes dos vídeos preparados pela equipe |
+| 2FA no login | `evidencias/otp-antes.txt` (17/11/2026): a senha, sozinha, devolvia o token de acesso. **VULNERÁVEL** | `evidencias/otp-depois.txt` (22/11/2026): senha sozinha não recebe token; código errado (400), código válido (200), o mesmo `mfa_token` depois do login (401), código reutilizado (400), código de recuperação aceito uma vez e recusado na segunda (400), recadastro do autenticador só com a senha (400). **PROTEGIDO** |
+| IDOR | `evidencias/idor-antes.txt` (17/11/2026): 6 de 6 tentativas do usuário A sobre dados do B foram aceitas. **VULNERÁVEL** | `evidencias/idor-depois.txt` (22/11/2026): 11 de 11 tentativas recusadas (404 nas leituras, alterações e comandos; 403 nos contornos com o ID do B no corpo; mesma resposta para viagem alheia e inexistente), e o dono continua usando normalmente (200). **PROTEGIDO** |
+| Testes automatizados | — | `python manage.py test --noinput`: 178 testes passando, incluindo `usuarios/test_2fa.py`, `usuarios/test_idor.py`, `usuarios/test_idor_cadastros.py` e `usuarios/test_gestao_usuarios.py`. |
+| Log do servidor | — | Cada tentativa bloqueada gera no log as linhas `IDOR bloqueado: usuario=... id=...` e `OTP recusado`, visíveis no painel de logs do Render. |
 
-**Responsabilidade pelas evidências e vídeos de depois: Wendell**, segundo o documento de tarefas de 19/11/2026. Os nomes pendentes devem ser substituídos pelos arquivos efetivamente produzidos, sem simular resultados.
+## 6. Vídeos de demonstração
 
-## 6. Limitações e riscos residuais
+Dois vídeos de até 90 segundos, um por controle, gravados no sistema publicado:
+
+- **2FA com TOTP:** login pedindo o código, código errado recusado, código do app aceito e reutilização recusada.
+- **Proteção contra IDOR:** cada usuário vendo só os próprios dados e a tentativa de acessar a viagem de outro usuário respondida com 404.
+
+<!-- Para o player aparecer: edite este arquivo no GitHub e arraste cada .mp4 (até 10 MB) para a linha abaixo do título; o GitHub troca pela URL do vídeo. -->
+
+### 2FA com TOTP
+
+_(arraste aqui o vídeo do 2FA)_
+
+### Proteção contra IDOR
+
+_(arraste aqui o vídeo do IDOR)_
+
+## 7. Limitações e riscos residuais
 
 - O 2FA reduz o risco de uso indevido de **senha isoladamente vazada**, mas não elimina phishing em tempo real, roubo de sessão/JWT, comprometimento do dispositivo autenticador ou indisponibilidade do serviço.
 - A proteção IDOR se aplica às rotas que realmente usam os filtros de acesso; novas rotas ou consultas criadas sem verificação apropriada podem reintroduzir a falha. Administradores possuem acesso mais amplo por regra de negócio.
+- Ao publicar a API em mais de um provedor (Render e Azure), todos precisam usar a mesma `OTP_ENCRYPTION_KEY`; com chaves diferentes, o segredo gravado por um servidor não é decifrado pelo outro e o código é recusado. Isso aconteceu no deploy da Azure e foi corrigido definindo a mesma chave nos dois ambientes.
 - A credencial `X-Device-Key` protege a ingestão por dispositivo, mas o acesso físico à placa pode expor a chave; essa mitigação é parcial.
 - MQTT em broker público, sem autenticação/TLS conforme o modelo atual, continua com risco de leitura/publicação indevida; a API mantém o histórico oficial separadamente.
 - O padrão `10/min` do escopo MFA e do login é mitigação parcial contra tentativas em massa, não proteção completa contra ataques distribuídos e negação de serviço; a configuração pode variar conforme ambiente.
 
-**Pendente de conciliação:** confrontar esta seção com a seção **5.4 de `guia-apresentacao.md`**, material citado no documento de tarefas, mas não incluído no ZIP analisado. Não considerar esta lista reprodução literal daquele guia.
+## 8. Participação da equipe
 
-## 7. Participação da equipe e origem das informações
+| Integrante | Participação na entrega de segurança |
+| --- | --- |
+| Wendell Barboza | Implementação dos controles (2FA, IDOR, gestão de usuários), scripts de teste, evidências de antes e depois, vídeos |
+| Lucas Mendes | `README.md`, `uso-de-ia.md` e atualização do `modelo-ameacas.md` desta pasta; deploy na Azure |
+| Matheus Henrique | Telas de login em duas etapas, QR Code e gestão de usuários no front |
+| Wendell Brasiliano | Banco de dados (PostgreSQL) |
+| Lais Nayara | Placa ESP32 e organização da entrega no GitHub |
+| Anderson Bem | Placa ESP32 (repositório do IoT) |
 
-- **Lucas:** responsável pelos arquivos `seguranca/README.md`, `seguranca/uso-de-ia.md` e atualização de `seguranca/modelo-ameacas.md`, conforme divisão de tarefas de 19/11/2026.
-- **Wendell:** identificado no documento de tarefas como responsável pelos testes posteriores, arquivos de evidência e vídeos; também é citado como responsável pelo material de apoio `guia-apresentacao.md` e `aula-seguranca-codigo.md` (não versionar esses materiais se forem enviados fora do Git).
-- **Autoria de cada controle de código e dos demais integrantes:** confirmar com histórico Git/PRs e equipe antes de atribuir nominalmente. A presença de código na main, por si só, não prova autoria individual.
-
-## 8. Revisão antes da entrega
-
-- [ ] Confirmar correspondência com `guia-apresentacao.md` (especialmente seção 5.4).
-- [ ] Preencher nomes reais de evidências de depois e vídeos quando enviados por Wendell.
-- [ ] Revisar `uso-de-ia.md` com histórico dos commits de 02/10 e prompts efetivamente usados.
-- [ ] Conferir execução em ambiente isolado e remover segredos das capturas.
-- [ ] Criar PR da branch `docs/seguranca` com os arquivos da pasta `seguranca/`.
+O histórico de commits e os pull requests no GitHub registram a autoria de cada alteração. O uso de IA está declarado em [`uso-de-ia.md`](uso-de-ia.md).

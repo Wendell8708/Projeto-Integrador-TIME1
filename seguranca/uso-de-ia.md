@@ -1,83 +1,93 @@
-# Uso de inteligência artificial — documentação de segurança
+# Declaração de uso de inteligência artificial
 
 ## 1. Objetivo
 
-Registrar de forma transparente a participação de ferramentas de IA no desenvolvimento e na documentação dos controles de segurança do projeto **Caminho do Vale**, distinguindo assistência automatizada, validação humana e evidências verificáveis.
+Registrar com transparência como a equipe do **Caminho do Vale** usou ferramentas de IA no desenvolvimento e na documentação dos controles de segurança (2FA com TOTP e proteção contra IDOR): em que partes a IA ajudou, o que a equipe decidiu e validou, e quais problemas foram encontrados e corrigidos durante a validação.
 
-**Estado do registro:** este arquivo foi preparado a partir da versão do código fornecida em 19/11/2026 e da divisão de tarefas da mesma data. O arquivo ZIP não contém o histórico `.git`, os prompts originais nem o documento de apoio `aula-seguranca-codigo.md`. As entradas que dependem desses materiais ficam explicitamente **pendentes de confirmação**, em vez de receber exemplos apresentados como fatos.
+A IA foi usada como **auxílio**. As decisões de projeto, a execução dos testes, a revisão e a aprovação de cada alteração foram da equipe.
 
-## 2. Áreas em que a IA foi utilizada ou deve ser documentada
+## 2. Ferramentas usadas
 
-O documento de tarefas informa que o registro precisa contemplar auxílio na **geração de código, criação de testes, revisão e documentação**. O quadro abaixo distingue o que está disponível no projeto da contribuição específica ainda não comprovada.
-
-| Área | Artefatos existentes | Contribuição da IA e validação humana a confirmar |
+| Ferramenta | Quem usou | Para quê |
 | --- | --- | --- |
-| Código do 2FA | `usuarios/dois_fatores.py`, `usuarios/views.py`, `usuarios/models.py` | **Pendente:** quais trechos foram propostos por IA, quem revisou, o que alterou e por quê. |
-| Código de autorização IDOR | `usuarios/acesso.py`, `transporte/views.py`, `iot/views.py`, `alertas/views.py`, `dominio/views.py` | **Pendente:** alterações humanas após sugestões da IA, especialmente nos filtros e no tratamento de 403/404. |
-| Testes | `usuarios/test_2fa.py`, `usuarios/test_idor.py`, `usuarios/test_idor_cadastros.py`, `seguranca/testes/` | **Pendente:** identificação dos testes sugeridos por IA e das correções efetuadas pela equipe. |
-| Revisão | Código, modelo de ameaças e logs de teste | **Pendente:** observações reais das revisões, erros detectados e decisões tomadas pelos integrantes. |
-| Documentação | `seguranca/README.md`, `seguranca/modelo-ameacas.md`, este arquivo | A estrutura e redação inicial dos três documentos de segurança foram auxiliadas por ChatGPT em 19/11/2026, com base no PDF de tarefas e na leitura dos arquivos do projeto; a validação e aprovação finais são da equipe. |
+| **Claude** (Anthropic) | Wendell Barboza | Geração e revisão de código, criação de testes, explicação do código, direcionamento das etapas, apoio no deploy e na documentação |
+| **ChatGPT** (OpenAI) | Lucas Mendes | Estrutura e redação inicial de `README.md`, `modelo-ameacas.md` e deste arquivo (19/11/2026); apoio no deploy da Azure |
+| **Gemini** (Google) | — | **Não** foi ferramenta de desenvolvimento: é a API usada pelo chat do próprio sistema, uma funcionalidade do produto. O contexto enviado a ele passa pelo mesmo filtro de IDOR |
 
-A revisão do código existente para redigir a documentação **não equivale a comprovar que a IA escreveu aquele código**.
+## 3. Onde a IA ajudou
 
-## 3. Revisões humanas e alterações no material produzido por IA
+| Área | Como a IA ajudou | Artefatos |
+| --- | --- | --- |
+| **Geração de código** | Propôs a implementação do 2FA (segredo TOTP cifrado, QR Code, token temporário de uso único, códigos de recuperação com hash, limite de tentativas) e do controle de acesso por dono, revisada e ajustada pela equipe antes do commit | `usuarios/dois_fatores.py`, `usuarios/acesso.py`, `usuarios/views.py`, `usuarios/gestao.py`, `transporte/views.py`, `iot/views.py`, `alertas/views.py`, `dominio/views.py` |
+| **Testes** | Sugeriu os cenários de ataque (troca de ID na URL e no corpo, enumeração, reuso de código e de token, recadastro do autenticador) e os testes automatizados | `usuarios/test_2fa.py`, `usuarios/test_idor.py`, `usuarios/test_idor_cadastros.py`, `seguranca/testes/` |
+| **Consultas e explicação** | Explicou cada bloco de código e montou o mapa "controle → arquivo e linha", para a equipe conseguir explicar e alterar o código ao vivo na apresentação | Material de estudo pessoal (fora do repositório) |
+| **Direcionamento** | Ajudou a planejar a ordem do trabalho: capturar a evidência do antes, implementar por fases (branches `seguranca/antes`, `seguranca/fase1`, `seguranca/fases234`), testar e capturar o depois | PRs #8, #9 e #10 |
+| **Revisão** | Analisou os apontamentos de uma revisão de código: quais faziam sentido e quais não comprometiam a entrega. A equipe decidiu o que aplicar | PR #13 e PR #14 (`fix/revisao-de-codigo`) |
+| **Deploy e ferramentas** | Orientou a configuração do Render e da Azure, a coleção do Postman e o diagnóstico de erros | `build.sh`, `seguranca/testes/caminho-do-vale.postman_collection.json` |
+| **Documentação** | Ajudou a redigir `docs/API.md`, o `README.md` do projeto e os documentos desta pasta | `docs/`, `seguranca/` |
 
-Para cada contribuição relevante, preencher com evidências reais antes da entrega:
+## 4. O que foi decidido e validado pela equipe
 
-| Componente/PR | Sugestão inicial da IA | Ajuste ou rejeição realizado por integrante | Como foi verificado | Responsável |
-| --- | --- | --- | --- | --- |
-| 2FA e recuperação | **A confirmar** | **A confirmar** | Testes e PR correspondente, a identificar | **A confirmar** |
-| Controle IDOR | **A confirmar** | **A confirmar** | Testes e PR correspondente, a identificar | **A confirmar** |
-| Scripts de teste | **A confirmar** | **A confirmar** | Saída dos testes e commit, a identificar | **A confirmar** |
-| Documentação de segurança | Organização/redação assistidas por ChatGPT em 19/11/2026 | **Revisão da equipe pendente** | Conferência com PDF, código, evidências e guia externo | Lucas (documentação) |
+- **Regras de negócio:** os papéis (plataforma, vendedor, comprador e motorista) e quem pode ver e fazer o quê em cada viagem foram definidos pela equipe em 17/11/2026.
+- **Execução dos testes:** os scripts foram rodados pelo Wendell contra a API publicada, antes e depois dos controles. Os resultados estão em `seguranca/evidencias/`, e não foram gerados pela IA.
+- **Testes manuais:** o login em duas etapas e o IDOR também foram testados no Postman e no front, com contas diferentes (vendedor A e vendedor B).
+- **Revisão e aprovação:** cada alteração entrou por pull request revisado e aprovado na `main`.
+- **Segredos:** nenhuma senha, chave, segredo TOTP ou arquivo `.env` foi enviado às ferramentas de IA.
 
-Não registrar uma revisão como concluída sem indicação de quem a realizou e do que foi mudado.
+## 5. Problemas encontrados na validação e como foram corrigidos
 
-## 4. Principais prompts usados
+Sugestões da IA não foram aceitas sem teste. Estes são exemplos reais de problemas que apareceram e foram corrigidos:
 
-**Prompts originais do desenvolvimento:** não foram fornecidos com o ZIP. Solicitar à equipe os textos ou links dos diálogos originais e registrar aqui apenas os que puderem ser comprovados, acompanhados da finalidade e da decisão humana.
+| Problema | Como foi percebido | Correção |
+| --- | --- | --- |
+| Algumas rotas checavam o estado da viagem antes do dono e respondiam 400 em vez de 403 para quem não era o dono | Testes automatizados | Reordenado: primeiro a verificação de dono, depois a de estado |
+| Uma migration dependia de outra de outro app e quebrava o banco de teste | Execução dos testes | Dependência entre as migrations corrigida |
+| O exemplo de segredo TOTP tinha 16 caracteres e foi recusado pela biblioteca `pyotp`, que exige 112 bits | Erro ao rodar o script de teste | Segredo gerado com `pyotp.random_base32()` (32 caracteres) |
+| Testes falhavam com `DEBUG=False` por causa do redirecionamento para HTTPS (301) | Execução dos testes | Configuração própria para os testes |
+| No deploy da Azure, o código do 2FA era sempre recusado para contas cadastradas no Render | Teste manual de login | O segredo é cifrado com uma chave do servidor, e os dois deploys usavam chaves diferentes. Corrigido definindo a mesma `OTP_ENCRYPTION_KEY` nos dois |
+| A revisão de código apontou que o token temporário do login podia ser reaproveitado | Revisão de código | Token passou a valer uma vez só (teste 3b do `teste_otp.py`) |
 
-**Solicitação documentada nesta etapa (19/11/2026):** a equipe solicitou comparar o projeto com o PDF de tarefas de documentação de segurança e, em seguida, preparar os três arquivos Markdown faltantes. Esta é uma descrição da solicitação desta etapa, **não** uma transcrição literal de prompts antigos nem evidência sobre a geração do backend.
+## 6. Principais solicitações feitas à IA
 
-| Data | Prompt ou resumo fiel da solicitação | Objetivo | Resultado conferido por |
+Resumo fiel das principais solicitações (não é transcrição literal):
+
+| Data | Solicitação | Objetivo |
+| --- | --- | --- |
+| 02/10/2026 | Montar a base da API: modelos, autenticação JWT, rotas e testes | Estrutura inicial do backend |
+| 16 e 17/11/2026 | Implementar o 2FA com TOTP e a proteção contra IDOR, passando os blocos de código passo a passo e explicando cada um | Controles exigidos pela atividade |
+| 17/11/2026 | Criar scripts que testem os ataques antes e depois, com o código de missão no cabeçalho | Evidências |
+| 19/11/2026 | Analisar uma revisão de código e aplicar só o que não comprometesse a entrega | Correções da revisão |
+| 19/11/2026 | Criar a gestão de usuários por convite, para não depender do `/admin` | Usabilidade e segurança |
+| 19/11/2026 | Comparar o projeto com as tarefas de documentação e redigir os documentos faltantes (ChatGPT, Lucas) | Documentação desta pasta |
+| 22/11/2026 | Mapear cada controle para arquivo e linha e explicar como mostrar o antes | Preparação da apresentação |
+| 23/11/2026 | Diagnosticar por que o 2FA não funcionava no deploy da Azure | Correção do deploy |
+
+## 7. Commits com coautoria declarada da IA
+
+Os commits de **02/10/2026** trazem no próprio Git a linha `Co-Authored-By: Claude`. Eles montaram a base da API, antes dos controles de segurança. O autor aparece como "Seu Nome" porque o Git ainda não estava configurado com o nome do autor.
+
+| Commit | Mensagem | O que fez | Tamanho |
 | --- | --- | --- | --- |
-| 19/11/2026 | Comparar o ZIP do projeto com o documento `Tarefas do Lucas — documentação de segurança.pdf` e produzir os documentos faltantes com base no código real. | Identificar pendências e redigir `README.md`, `uso-de-ia.md`, `modelo-ameacas.md`. | **Revisão final da equipe pendente** |
-| **A preencher** | **Prompt original de criação dos controles** | **A preencher** | **A preencher** |
-| **A preencher** | **Prompt original de geração/revisão dos testes** | **A preencher** | **A preencher** |
+| `27676b0` | Adiciona models de domínio, iot e transporte com migrações | Primeiros modelos e migrations | 38 arquivos |
+| `a76a055` | Fundação: PostgreSQL ativo, fuso correto, config via .env e permissões nativas | Configuração do banco e do ambiente | 6 arquivos |
+| `8553623` | Modelagem: Leitura, Alerta e limites com faixa e margem crítica | Modelos de leitura, alerta e limites por fruta | 8 arquivos |
+| `93f600b` | Autenticação JWT, endpoint /me e grupos de permissão | Login por token e grupos de permissão | 7 arquivos |
+| `1e072d2` | API REST v1: services de negócio, serializers, views, rotas e admin | Primeira versão das rotas da API | 23 arquivos |
+| `854f449` | Testes automatizados da API (33 testes) | Primeiros testes automatizados | 4 arquivos |
 
-## 5. Commits de 02/10 com coautoria do Claude
+Os commits de segurança de novembro também foram feitos com auxílio do Claude, mas sem a linha de coautoria no Git. Por isso eles estão declarados aqui:
 
-A divisão de tarefas informa expressamente que **existem commits de 02/10 com coautoria do Claude** e exige mencioná-los e explicar o que fizeram. **Não foi possível conferir hash, ano, mensagem, arquivos alterados ou a linha `Co-authored-by`**, pois o ZIP do projeto não traz metadados Git.
+| Commit | Mensagem |
+| --- | --- |
+| `f2608a7` | Segurança: modelo de ameaças e testes do antes (IDOR e OTP) |
+| `0eafeda` | Fase 1: papéis vendedor/comprador/motorista, donos da viagem e da placa |
+| `b6c47c6` | Segurança: IDOR por dono, 2FA TOTP com códigos de recuperação e chat Gemini |
+| `bf1af09` | Proteção IDOR em veículos e locais, rota de usuários, testes de alteração ao vivo |
+| `11f1c17` | Gestão de usuários pela plataforma e docs da API |
+| `0a651d4` | Correções da revisão: viagem e carga travadas após iniciar, alertas, integridade e token 2FA de uso único |
 
-Para obter informações verificáveis, dentro de um clone com histórico Git execute:
+Os commits de documentação do Lucas (`86156a1` e `2302cec`, 19/11/2026) tiveram a redação inicial auxiliada pelo ChatGPT, conforme a seção 2.
 
-```powershell
-git log --all --since='2026-10-02 00:00:00' --until='2026-10-03 00:00:00' --format='%H%n%ad%n%s%n%b%n---' --date=iso
-```
+## 8. Limitações e responsabilidade
 
-Se a data de 02/10 indicada pelo responsável for de outro ano, ajuste o intervalo de datas. Para conferir o conteúdo de um commit identificado:
-
-```powershell
-git show --stat <hash-do-commit>
-git show <hash-do-commit>
-```
-
-Depois, substituir este quadro pelos dados comprovados:
-
-| Hash do commit | Data | Mensagem / contribuição do Claude | Arquivos e funcionalidade alterados | Revisão humana |
-| --- | --- | --- | --- | --- |
-| **Pendente de consulta ao Git** | 02/10 (ano a confirmar) | **A confirmar a partir do commit** | **A confirmar com `git show`** | **A confirmar com o responsável** |
-
-**Importante:** a menção aos commits é exigência do documento de tarefas; não declarar coautoria de um commit específico nem atribuir correções ao Claude sem verificar o histórico.
-
-## 6. Limitações e responsabilidade
-
-Respostas de IA podem conter sugestões incompletas, erros de segurança ou suposições sobre requisitos. A equipe precisa conferir os controles no código, revisar os testes e validar o funcionamento em ambiente autorizado. Não incluir em prompts compartilhados senhas, chaves de dispositivos, segredos TOTP, tokens ou `.env`. Evidências de teste não podem ser simuladas.
-
-**Checklist de validação antes da entrega**
-
-- [ ] Obter histórico real de 02/10 e identificar os commits com coautoria do Claude.
-- [ ] Identificar os principais prompts efetivamente utilizados e sua finalidade.
-- [ ] Registrar modificações humanas concretas e os nomes dos revisores.
-- [ ] Conferir nomes dos arquivos, links, commits e os resultados dos testes.
-- [ ] Revisar o texto com Wendell e demais integrantes envolvidos.
+Respostas de IA podem conter erros, sugestões incompletas ou suposições sobre os requisitos, como mostram os casos da seção 5. Por isso, todo código sugerido foi testado (178 testes automatizados, scripts de ataque e testes manuais) antes de entrar na `main`. A responsabilidade pelo código entregue e pelos resultados apresentados é da equipe.
