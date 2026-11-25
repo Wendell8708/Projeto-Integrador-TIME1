@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test, type Page } from "@playwright/test";
 import { Api, dados, type Opcoes, type Sessao } from "../../support/api";
 import { recursosDe } from "../../support/cenario";
-import { API_URL, FRONT_URL, SEGREDO_TOTP, SENHA, TEM_CREDENCIAIS, USUARIOS, AVISO_CREDENCIAIS } from "../../support/config";
+import { API_URL, CODIGO_MANUAL, FRONT_URL, SEGREDO_TOTP, SENHA, TEM_CREDENCIAIS, USUARIOS, AVISO_CREDENCIAIS } from "../../support/config";
 import { abrirPainel, legenda, linhaNoPainel, mostrarApiNoFront, notaNoPainel } from "../../support/painel";
 import { sessaoOpcional } from "../../support/sessoes";
 import { codigoDoPasso, marcarPassoUsado, passoAtual, proximoPasso } from "../../support/totp";
@@ -66,6 +66,32 @@ class Cena {
   painel = (titulo: string, subtitulo = `Ataques direto na API · ${API_URL}`) => abrirPainel(this.page, titulo, subtitulo);
   nota = (texto: string) => notaNoPainel(this.page, texto);
 
+  /**
+   * Modo código manual: mostra uma caixa no painel e espera a pessoa digitar o código que está
+   * no aplicativo do celular naquele momento (até 3 min).
+   */
+  async pedirCodigo(motivo: string): Promise<string> {
+    await this.page.evaluate((m) => {
+      const caixa = document.createElement("div");
+      caixa.className = "nota";
+      caixa.style.borderLeftColor = "#f2c94c";
+      caixa.innerHTML = '<b style="color:#f2c94c">Código do aplicativo autenticador</b><div class="m" style="margin-top:4px"></div>'
+        + '<input class="codigo-manual" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="000000" '
+        + 'style="margin-top:10px;font:700 30px Consolas,monospace;letter-spacing:.3em;width:230px;padding:8px 12px;border-radius:10px;border:2px solid #f2c94c;background:#0f1a14;color:#fff">';
+      caixa.querySelector(".m")!.textContent = m;
+      document.getElementById("linhas")!.append(caixa);
+      caixa.scrollIntoView({ block: "end" });
+    }, motivo);
+    const campo = this.page.locator("input.codigo-manual").last();
+    await this.page.bringToFront();
+    await campo.focus();
+    console.log(`\n>>> DIGITE NO NAVEGADOR o código do aplicativo: ${motivo}\n`);
+    await expect.poll(async () => /^\d{6}$/.test(await campo.inputValue()), { timeout: 180_000, intervals: [300] }).toBe(true);
+    const codigo = await campo.inputValue();
+    await campo.evaluate((el) => { (el as HTMLInputElement).disabled = true; });
+    return codigo;
+  }
+
   /** Um ataque: o servidor tem que recusar (400/401/403/404, ou a lista informada). */
   async ataque(metodo: string, rota: string, opcoes: Opcoes = {}, esperado: number[] = RECUSA) {
     const resposta = await this.api.chamar(metodo, rota, opcoes);
@@ -124,6 +150,8 @@ async function sessaoNoNavegador(page: Page, s: Sessao) {
 }
 
 const precisaLogin = () => test.skip(!TEM_CREDENCIAIS, AVISO_CREDENCIAIS);
+const precisaLogin2fa = () => test.skip(!TEM_CREDENCIAIS && !CODIGO_MANUAL,
+  `${AVISO_CREDENCIAIS} Ou use o modo manual: TESTE_SENHA e TESTE_CODIGO_MANUAL=1 no .env (npm run video:2fa).`);
 const sessaoObrigatoria = (letra: "A" | "B") => {
   const s = sessaoOpcional(letra);
   test.skip(!s, `Sem sessao do usuario ${letra}. ${AVISO_CREDENCIAIS}`);
@@ -131,7 +159,8 @@ const sessaoObrigatoria = (letra: "A" | "B") => {
 };
 
 test.describe("Video da automacao (capitulos)", () => {
-  test.beforeEach(() => test.setTimeout(900_000));
+  // Cada capítulo pode esperar a pessoa digitar o código e o código vencer: 15 min por capítulo.
+  test.describe.configure({ timeout: 900_000 });
 
   test("01 front sem login", async ({ page }) => {
     const cena = new Cena(page);
@@ -148,21 +177,23 @@ test.describe("Video da automacao (capitulos)", () => {
   });
 
   test("02 login com 2FA pela tela", async ({ page }) => {
-    precisaLogin();
+    precisaLogin2fa();
     const cena = new Cena(page);
-    await cena.cartao("Login com 2FA pela tela", "O vendedor A entra no painel publicado. A senha sozinha não basta: o servidor exige o código do aplicativo autenticador.");
+    await cena.preparo.get("/auth/me"); // acorda o Render antes de gravar
+    await cena.cartao("Login com 2FA pela tela", "O dono da conta entra no painel publicado. A senha sozinha não basta: o servidor exige o código do aplicativo autenticador.");
     mostrarApiNoFront(page, "tela", []);
     await abrirFront(page, "/login");
     const campo = (rotulo: string) => page.getByLabel(rotulo, { exact: true });
     const codigo = page.getByLabel("Código de 6 dígitos do aplicativo autenticador");
 
-    await legenda(page, "1. O vendedor A digita só e-mail e senha");
+    await legenda(page, "1. O dono da conta digita só e-mail e senha");
     await campo("E-mail").pressSequentially(USUARIOS.A, { delay: 40 });
     await campo("Senha").pressSequentially(SENHA, { delay: 40 });
-    const login = page.waitForResponse((r) => r.url().includes("/auth/login") && r.request().method() === "POST");
+    // O Render gratuito dorme depois de 15 min parado e pode levar mais de 1 min para acordar.
+    const login = page.waitForResponse((r) => r.url().includes("/auth/login") && r.request().method() === "POST", { timeout: 150_000 });
     await page.getByRole("button", { name: "Entrar", exact: true }).click();
     expect(await (await login).text(), "a senha sozinha devolveu o token de acesso").not.toMatch(/"access"/);
-    await expect(page.getByRole("heading", { name: "Digite o código" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Digite o código" })).toBeVisible({ timeout: 30_000 });
     cena.recusadas++;
     await legenda(page, "2. A senha certa NÃO abre o painel: o servidor pede o código do autenticador");
     await page.waitForTimeout(3000);
@@ -173,11 +204,21 @@ test.describe("Video da automacao (capitulos)", () => {
     cena.recusadas++;
     await page.waitForTimeout(3000);
 
-    await legenda(page, "4. O código certo do autenticador (muda a cada 30 s) libera o painel");
-    const passo = await proximoPasso(USUARIOS.A);
-    await codigo.pressSequentially(codigoDoPasso(SEGREDO_TOTP, passo), { delay: 120 });
-    await expect(page.getByRole("button", { name: "Menu do usuário" })).toBeVisible();
-    marcarPassoUsado(USUARIOS.A, passo);
+    if (CODIGO_MANUAL) {
+      // O dono digita no próprio site o código que está no aplicativo do celular.
+      await legenda(page, "4. O dono digita o código que está no aplicativo agora (muda a cada 30 s)");
+      await page.bringToFront();
+      await codigo.focus();
+      console.log("\n>>> DIGITE NO NAVEGADOR, no campo do site, o código que está no aplicativo agora.\n");
+      await expect(page.getByRole("button", { name: "Menu do usuário" })).toBeVisible({ timeout: 180_000 });
+      await legenda(page, "4. O código certo do autenticador libera o painel");
+    } else {
+      await legenda(page, "4. O código certo do autenticador (muda a cada 30 s) libera o painel");
+      const passo = await proximoPasso(USUARIOS.A);
+      await codigo.pressSequentially(codigoDoPasso(SEGREDO_TOTP, passo), { delay: 120 });
+      await expect(page.getByRole("button", { name: "Menu do usuário" })).toBeVisible();
+      marcarPassoUsado(USUARIOS.A, passo);
+    }
     cena.legitimas++;
     await page.waitForTimeout(3500);
 
@@ -191,10 +232,25 @@ test.describe("Video da automacao (capitulos)", () => {
   });
 
   test("03 2FA atacado na API", async ({ page }) => {
-    precisaLogin();
+    precisaLogin2fa();
     const cena = new Cena(page);
     const A = USUARIOS.A;
-    await cena.cartao("O 2FA atacado direto na API", "Sem o front: o atacante tem a senha do vendedor A e tenta entrar pela API de todos os jeitos.");
+    // Código do dono: calculado com o segredo ou, no modo manual, digitado a partir do celular.
+    let ultimoManual = "";
+    const obterCodigo = async (motivo: string) => {
+      if (!CODIGO_MANUAL) {
+        const passo = await proximoPasso(A);
+        marcarPassoUsado(A, passo);
+        return codigoDoPasso(SEGREDO_TOTP, passo);
+      }
+      for (;;) {
+        const digitado = await cena.pedirCodigo(motivo);
+        if (digitado !== ultimoManual) return (ultimoManual = digitado);
+        motivo = "Esse código já foi usado. Espere o aplicativo mostrar um código novo e digite de novo.";
+      }
+    };
+    await cena.preparo.get("/auth/me"); // acorda o Render antes de gravar
+    await cena.cartao("O 2FA atacado direto na API", "Sem o front: o atacante tem a senha da conta e tenta entrar pela API de todos os jeitos.");
     await cena.painel("2FA atacado direto na API");
 
     await cena.nota("1. Senha certa, sem o código: o servidor devolve só um token temporário (mfa_token), sem acesso.");
@@ -210,10 +266,9 @@ test.describe("Video da automacao (capitulos)", () => {
 
     await cena.nota("3. O dono, com o código certo do aplicativo, entra (azul = aceito).");
     const mfa = await cena.preparo.novoMfaToken(A);
-    const passo = await proximoPasso(A);
-    const codigo = codigoDoPasso(SEGREDO_TOTP, passo);
-    const entrou = await cena.legitimo("POST", "/auth/2fa/verify", { json: { mfa_token: mfa, code: codigo }, quem: "A (dono)" });
-    marcarPassoUsado(A, passo);
+    const codigo = await obterCodigo("Digite o código que está no aplicativo agora.");
+    const momentoDoCodigo = Date.now();
+    const entrou = await cena.legitimo("POST", "/auth/2fa/verify", { json: { mfa_token: mfa, code: codigo }, quem: "dono" });
     const acesso = (await dados(entrou)).access;
 
     await cena.nota("4. Reaproveitar o mesmo mfa_token, o mesmo código e um mfa_token forjado.");
@@ -221,34 +276,39 @@ test.describe("Video da automacao (capitulos)", () => {
     await cena.ataque("POST", "/auth/2fa/verify", { json: { mfa_token: await cena.preparo.novoMfaToken(A), code: codigo }, quem: "código usado" });
     await cena.ataque("POST", "/auth/2fa/verify", { json: { mfa_token: "eyJ1IjoxLCJsIjoiIn0:1:assinatura-falsa", code: codigo }, quem: "token forjado" });
 
-    await cena.nota("5. Código vencido (gerado 1 minuto atrás) e código \"do futuro\" (1 minuto à frente).");
-    const agora = passoAtual();
-    await cena.ataque("POST", "/auth/2fa/verify", { json: { mfa_token: await cena.preparo.novoMfaToken(A), code: codigoDoPasso(SEGREDO_TOTP, agora - 2) }, quem: "vencido" });
-    await cena.ataque("POST", "/auth/2fa/verify", { json: { mfa_token: await cena.preparo.novoMfaToken(A), code: codigoDoPasso(SEGREDO_TOTP, agora + 2) }, quem: "do futuro" });
-
-    await cena.nota("6. Corrida: o mesmo código certo enviado duas vezes AO MESMO TEMPO. Só uma pode entrar.");
+    await cena.nota("5. Corrida: o mesmo código certo enviado duas vezes AO MESMO TEMPO. Só uma pode entrar.");
     const [m1, m2] = [await cena.preparo.novoMfaToken(A), await cena.preparo.novoMfaToken(A)];
-    const passoCorrida = await proximoPasso(A);
-    const codigoCorrida = codigoDoPasso(SEGREDO_TOTP, passoCorrida);
+    const codigoCorrida = await obterCodigo("Espere o aplicativo trocar de código e digite o código NOVO.");
     const corrida = await Promise.all([
       cena.api.post("/auth/2fa/verify", { json: { mfa_token: m1, code: codigoCorrida }, quem: "pedido 1" }),
       cena.api.post("/auth/2fa/verify", { json: { mfa_token: m2, code: codigoCorrida }, quem: "pedido 2" }),
     ]);
-    marcarPassoUsado(A, passoCorrida);
     expect(corrida.filter((r) => r.status() === 200), "as duas requisições entraram com o mesmo código").toHaveLength(1);
     cena.legitimas++;
     cena.recusadas++;
     await cena.nota("Uma entrou e a outra foi recusada: o servidor trava o código enquanto confere.");
 
-    await cena.nota("7. Código de recuperação: vale uma vez só.");
-    const passo2 = await proximoPasso(A);
-    const gerados = await cena.preparo.post("/auth/2fa/recovery-codes", { token: acesso, json: { code: codigoDoPasso(SEGREDO_TOTP, passo2) } });
-    marcarPassoUsado(A, passo2);
-    const recuperacao: string = (await dados(gerados)).recovery_codes[0];
-    await cena.legitimo("POST", "/auth/2fa/verify", { json: { mfa_token: await cena.preparo.novoMfaToken(A), recovery_code: recuperacao }, quem: "A (dono)" });
-    await cena.ataque("POST", "/auth/2fa/verify", { json: { mfa_token: await cena.preparo.novoMfaToken(A), recovery_code: recuperacao }, quem: "repetido" });
+    if (CODIGO_MANUAL) {
+      // Sem o segredo não dá para gerar um código antigo: reaproveita o primeiro depois que ele vence.
+      const falta = Math.ceil((95_000 - (Date.now() - momentoDoCodigo)) / 1000);
+      await cena.nota(`6. Código vencido: o primeiro código digitado, ${falta > 0 ? `depois de esperar ${falta} s para ele vencer` : "que já venceu"} (o servidor tolera só ~30 s de atraso do relógio).`);
+      if (falta > 0) await page.waitForTimeout(falta * 1000);
+      await cena.ataque("POST", "/auth/2fa/verify", { json: { mfa_token: await cena.preparo.novoMfaToken(A), code: codigo }, quem: "vencido" });
+    } else {
+      await cena.nota("6. Código vencido (gerado 1 minuto atrás) e código \"do futuro\" (1 minuto à frente).");
+      const agora = passoAtual();
+      await cena.ataque("POST", "/auth/2fa/verify", { json: { mfa_token: await cena.preparo.novoMfaToken(A), code: codigoDoPasso(SEGREDO_TOTP, agora - 2) }, quem: "vencido" });
+      await cena.ataque("POST", "/auth/2fa/verify", { json: { mfa_token: await cena.preparo.novoMfaToken(A), code: codigoDoPasso(SEGREDO_TOTP, agora + 2) }, quem: "do futuro" });
 
-    await cena.nota("8. Com a senha, tentar cadastrar o próprio celular no lugar do autenticador do A.");
+      // Gera códigos de recuperação novos (anula os antigos): só com a conta de teste, nunca no modo manual.
+      await cena.nota("7. Código de recuperação: vale uma vez só.");
+      const gerados = await cena.preparo.post("/auth/2fa/recovery-codes", { token: acesso, json: { code: await obterCodigo("") } });
+      const recuperacao: string = (await dados(gerados)).recovery_codes[0];
+      await cena.legitimo("POST", "/auth/2fa/verify", { json: { mfa_token: await cena.preparo.novoMfaToken(A), recovery_code: recuperacao }, quem: "dono" });
+      await cena.ataque("POST", "/auth/2fa/verify", { json: { mfa_token: await cena.preparo.novoMfaToken(A), recovery_code: recuperacao }, quem: "repetido" });
+    }
+
+    await cena.nota(`${CODIGO_MANUAL ? "7" : "8"}. Com a senha, tentar cadastrar o próprio celular no lugar do autenticador do dono.`);
     await cena.ataque("POST", "/auth/2fa/setup", { json: { mfa_token: await cena.preparo.novoMfaToken(A) }, quem: "atacante" });
     await page.waitForTimeout(2500);
     await cena.encerrar("03-2fa-api.webm", "Sem o código do autenticador não sai token de acesso, e nenhum código ou token vale duas vezes.");
@@ -402,21 +462,30 @@ test.describe("Video da automacao (capitulos)", () => {
     const cena = new Cena(page);
     await cena.cartao("Cabeçalhos e CORS da API", "Proteções do navegador: a API não pode ser aberta dentro de outro site, e um site qualquer não lê as respostas dela.");
     await cena.painel("Cabeçalhos de segurança e CORS");
+    await cena.nota("1. Uma chamada qualquer, só para ler os cabeçalhos de proteção que a API manda em toda resposta.");
     const h = (await cena.api.get("/auth/me")).headers();
     await cena.nota(`X-Frame-Options: ${h["x-frame-options"] ?? "ausente"} · X-Content-Type-Options: ${h["x-content-type-options"] ?? "ausente"} · HSTS: ${h["strict-transport-security"] ? "ativo" : "ausente"}`);
     expect(h["x-frame-options"]).toBe("DENY");
     expect(h["x-content-type-options"]).toBe("nosniff");
     cena.recusadas += 2;
 
-    await cena.nota("Um site malicioso (site-malicioso.example) tenta usar a API pelo navegador da vítima.");
+    await cena.nota("2. Um site malicioso (site-malicioso.example) tenta usar a API pelo navegador da vítima. Antes, o navegador pergunta à API se pode (pré-voo OPTIONS).");
     const origem = "https://site-malicioso.example";
-    const pre = await cena.api.chamar("OPTIONS", "/auth/login", { headers: { Origin: origem, "Access-Control-Request-Method": "POST" }, quem: "site falso" });
+    const liberado = (acao?: string) => acao === origem || acao === "*";
+    const pre = await cena.api.chamar("OPTIONS", "/auth/login", {
+      headers: { Origin: origem, "Access-Control-Request-Method": "POST" },
+      quem: "site falso",
+      // O pré-voo sempre recebe resposta (200); a recusa é a falta do Access-Control-Allow-Origin.
+      avaliar: (r) => liberado(r.headers()["access-control-allow-origin"])
+        ? { texto: "CORS liberado", classe: "erro" }
+        : { texto: "sem permissão CORS", classe: "recusado" },
+    });
     const permitido = pre.headers()["access-control-allow-origin"];
     expect(permitido === origem || permitido === "*").toBe(false);
     cena.recusadas++;
     await cena.nota(`Resposta: ${permitido ? `Access-Control-Allow-Origin: ${permitido}` : "sem Access-Control-Allow-Origin"}. O navegador bloqueia o site falso.`);
 
-    await cena.nota("Uma rota que não existe: a página de erro não mostra código nem configuração do servidor.");
+    await cena.nota("3. Uma rota que não existe: a página de erro não mostra código nem configuração do servidor.");
     const erro = await cena.ataque("GET", `${new URL(API_URL).origin}/rota-que-nao-existe`, { quem: "curioso" }, [404]);
     expect(await erro.text()).not.toMatch(/Traceback|DEBUG = True|SECRET_KEY/);
     await page.waitForTimeout(3000);

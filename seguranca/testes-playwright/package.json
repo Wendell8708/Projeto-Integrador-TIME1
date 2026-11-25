@@ -14,6 +14,7 @@
     "ui": "node scripts/apresentar.mjs --ui",
     "apresentacao": "node scripts/apresentar.mjs --project=api --project=tela --headed",
     "video": "node scripts/apresentar.mjs --project=video",
+    "video:2fa": "node scripts/apresentar.mjs --project=video -g 2FA --headed",
     "relatorio": "playwright show-report relatorio",
     "tipos": "tsc -p ."
   },

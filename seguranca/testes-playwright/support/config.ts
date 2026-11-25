@@ -16,12 +16,21 @@ export const SENHA = process.env.TESTE_SENHA ?? "";
 export const SEGREDO_TOTP = (process.env.TESTE_TOTP_SEGREDO ?? "").replace(/\s/g, "").toUpperCase();
 export const MISSAO = process.env.MISSAO || "TIME1";
 
-/** Usuarios sinteticos criados por: python manage.py preparar_teste_seguranca [--terceiro] */
+/**
+ * Usuarios sinteticos criados por: python manage.py preparar_teste_seguranca [--terceiro].
+ * Podem ser trocados por contas reais no .env (TESTE_USUARIO_A/B/C).
+ */
 export const USUARIOS = {
-  A: "vendedor-a@teste.local",
-  B: "vendedor-b@teste.local",
-  C: "vendedor-c@teste.local",
-} as const;
+  A: process.env.TESTE_USUARIO_A || "vendedor-a@teste.local",
+  B: process.env.TESTE_USUARIO_B || "vendedor-b@teste.local",
+  C: process.env.TESTE_USUARIO_C || "vendedor-c@teste.local",
+};
+
+/**
+ * TESTE_CODIGO_MANUAL=1: sem o segredo do autenticador, os capitulos de 2FA do video param e
+ * esperam a pessoa digitar o codigo que esta no aplicativo do celular naquele momento.
+ */
+export const CODIGO_MANUAL = process.env.TESTE_CODIGO_MANUAL === "1" && Boolean(SENHA) && !SEGREDO_TOTP;
 export type Letra = keyof typeof USUARIOS;
 
 /** Pasta (fora do Git) onde o setup guarda as sessoes e o ultimo passo TOTP usado. */

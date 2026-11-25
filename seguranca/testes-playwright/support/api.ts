@@ -1,6 +1,6 @@
 import { test, type APIRequestContext, type APIResponse, type Page } from "@playwright/test";
 import { API_URL, SEGREDO_TOTP, SENHA, USUARIOS } from "./config";
-import { textoDaLinha, type LinhaApi } from "./painel";
+import { textoDaLinha, type LinhaApi, type Rotulo } from "./painel";
 import { quemEh } from "./sessoes";
 import { codigoDoPasso, esperarPasso, marcarPassoUsado, passoAtual, proximoPasso } from "./totp";
 
@@ -19,6 +19,8 @@ export type Opcoes = {
   esperarLimite?: boolean;
   /** Quem aparece no painel/log. Sem isso, descobre pelo token (A, B, C) ou pelo e-mail do corpo. */
   quem?: string;
+  /** Rótulo do painel calculado pela resposta, quando o status sozinho engana (ex.: preflight de CORS). */
+  avaliar?: (resposta: APIResponse) => Rotulo;
 };
 
 function quemChamou(opcoes: Opcoes): string {
@@ -70,7 +72,7 @@ export class Api {
         failOnStatusCode: false,
         timeout: 90_000, // o Render gratuito leva ~1 min para acordar
       });
-      const linha: LinhaApi = { quem: quemChamou(opcoes), metodo, rota, status: resposta.status() };
+      const linha: LinhaApi = { quem: quemChamou(opcoes), metodo, rota, status: resposta.status(), rotulo: opcoes.avaliar?.(resposta) };
       this.registro.push(`${String(linha.status).padStart(4)}  ${metodo.padEnd(6)} ${rota}   (${linha.quem})`);
       console.log(`[api] ${textoDaLinha(linha)}`);
       // Cada chamada vira um passo com nome no --ui (o "log" ao lado da tela) e uma linha no painel.
