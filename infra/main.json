@@ -1,0 +1,89 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.49.2.45890",
+      "templateHash": "7135822403786648258"
+    }
+  },
+  "parameters": {
+    "backendAppName": {
+      "type": "string",
+      "defaultValue": "app-caminho-vale-backend-novo",
+      "metadata": {
+        "description": "Nome do App Service do backend."
+      }
+    },
+    "backendLocation": {
+      "type": "string",
+      "defaultValue": "brazilsouth",
+      "metadata": {
+        "description": "Regiao do backend."
+      }
+    },
+    "planResourceGroup": {
+      "type": "string",
+      "defaultValue": "app-curso-lucass_group",
+      "metadata": {
+        "description": "Grupo de recursos do plano compartilhado."
+      }
+    },
+    "planName": {
+      "type": "string",
+      "defaultValue": "ASP-appcursolucassgroup-879b",
+      "metadata": {
+        "description": "Nome do App Service Plan existente."
+      }
+    },
+    "pythonVersion": {
+      "type": "string",
+      "defaultValue": "PYTHON|3.13",
+      "metadata": {
+        "description": "Versao do Python."
+      }
+    },
+    "startupCommand": {
+      "type": "string",
+      "defaultValue": "gunicorn piADS04.wsgi:application --bind 0.0.0.0:8000 --timeout 600",
+      "metadata": {
+        "description": "Comando de inicializacao do Django."
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2023-12-01",
+      "name": "[parameters('backendAppName')]",
+      "location": "[parameters('backendLocation')]",
+      "kind": "app,linux",
+      "properties": {
+        "serverFarmId": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('planResourceGroup')), 'Microsoft.Web/serverfarms', parameters('planName'))]",
+        "httpsOnly": true,
+        "siteConfig": {
+          "linuxFxVersion": "[parameters('pythonVersion')]",
+          "appCommandLine": "[parameters('startupCommand')]",
+          "minTlsVersion": "1.2",
+          "ftpsState": "FtpsOnly",
+          "alwaysOn": false
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "backendName": {
+      "type": "string",
+      "value": "[parameters('backendAppName')]"
+    },
+    "backendUrl": {
+      "type": "string",
+      "value": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', parameters('backendAppName')), '2023-12-01').defaultHostName)]"
+    },
+    "appServicePlanId": {
+      "type": "string",
+      "value": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('planResourceGroup')), 'Microsoft.Web/serverfarms', parameters('planName'))]"
+    }
+  }
+}

@@ -4,7 +4,7 @@ mudar de forma incompativel, criamos /api/v2/ sem quebrar o frontend atual).
 
 Documentacao interativa (Swagger):  /api/docs/   |   Esquema OpenAPI: /api/schema/
 """
-
+from django.http import JsonResponse
 from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
@@ -24,11 +24,18 @@ permissao_docs = [AllowAny] if settings.DEBUG else [IsAdminUser]
 # ou o JWT. As chamadas feitas DENTRO do Swagger continuam usando o JWT (botao Authorize).
 autenticacao_docs = [SessionAuthentication, JWTAuthentication]
 
+def health_check(request):
+    return JsonResponse({
+        "status": "ok",
+        "service": "Caminho do Vale API"
+    })
+
+
 urlpatterns = [
     # A raiz mostra que a API esta no ar (em vez de 404).
     path('', home, name='home'),
     path('admin/', admin.site.urls),
-
+    path("health/", health_check, name="health_check"),
     path('api/v1/auth/', include('usuarios.urls')),
     path('api/v1/', include('dominio.urls')),
     path('api/v1/', include('iot.urls')),
@@ -41,6 +48,7 @@ urlpatterns = [
     path('api/docs/', SpectacularSwaggerView.as_view(
         url_name='schema', permission_classes=permissao_docs, authentication_classes=autenticacao_docs), name='docs'),
 ]
+
 
 # Rota inexistente responde JSON (vale com DEBUG=False, como no Render).
 handler404 = 'piADS04.views.not_found'
