@@ -1,0 +1,11 @@
+SET search_path TO monitoramento, public;
+CREATE INDEX IF NOT EXISTS idx_parametro_fruta_id_fruta ON parametro_fruta(id_fruta);
+CREATE INDEX IF NOT EXISTS idx_viagem_id_usuario ON viagem(id_usuario);
+CREATE INDEX IF NOT EXISTS idx_viagem_id_fruta ON viagem(id_fruta);
+CREATE INDEX IF NOT EXISTS idx_viagem_id_dispositivo ON viagem(id_dispositivo);
+CREATE INDEX IF NOT EXISTS idx_viagem_periodo ON viagem(data_hora_inicio, data_hora_fim);
+CREATE INDEX IF NOT EXISTS idx_medicao_viagem_data ON medicao(id_viagem, data_hora_medicao);
+CREATE INDEX IF NOT EXISTS idx_evento_viagem_data ON evento_impacto(id_viagem, data_hora_registro);
+CREATE INDEX IF NOT EXISTS idx_alerta_viagem_situacao ON alerta(id_viagem, situacao);
+CREATE INDEX IF NOT EXISTS idx_credencial_dispositivo ON credencial_dispositivo(id_dispositivo);
+CREATE INDEX IF NOT EXISTS idx_foto_inspecao ON foto_inspecao(id_inspecao);
