@@ -1,0 +1,118 @@
+
+name: CI/CD Django - Caminho do Vale
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build e testes Django
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: caminhodovale_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      SECRET_KEY: chave-temporaria-exclusiva-para-testes-ci
+      DEBUG: "True"
+      ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      DB_NAME: caminhodovale_test
+      DB_USER: postgres
+      DB_PASSWORD: postgres_test
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_SSLMODE: disable
+
+    steps:
+      - name: Baixar codigo do GitHub
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Criar ambiente virtual
+        run: |
+          python -m venv antenv
+
+      - name: Instalar dependencias
+        run: |
+          source antenv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verificar configuracoes Django
+        run: |
+          source antenv/bin/activate
+          python manage.py check
+
+      - name: Verificar migracoes pendentes
+        run: |
+          source antenv/bin/activate
+          python manage.py makemigrations --check --dry-run
+
+      - name: Executar testes automatizados
+        run: |
+          source antenv/bin/activate
+          python manage.py test --noinput
+
+      - name: Gerar arquivos estaticos
+        run: |
+          source antenv/bin/activate
+          python manage.py collectstatic --noinput
+
+      - name: Preparar pacote para Azure
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-app
+          path: |
+            .
+            !antenv/
+            !.git/
+            !.env
+            !.venv/
+            !venv/
+            !staticfiles/
+
+  deploy:
+    name: Deploy Azure App Service
+    runs-on: ubuntu-latest
+    needs: build
+
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Baixar pacote da aplicacao
+        uses: actions/download-artifact@v4
+        with:
+          name: python-app
+
+      - name: Publicar backend na Azure
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: app-caminho-vale-backend-novo
+          slot-name: Production
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_F0316F3DB2654027932E7240B6E9D50F }}
