@@ -1,0 +1,25 @@
+{
+  "name": "caminho-do-vale-testes-seguranca",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Testes de seguranca (2FA, IDOR, sessao, placa) com Playwright contra a API e o front publicados.",
+  "scripts": {
+    "test": "playwright test --project=api --project=tela --project=limite",
+    "test:completo": "node scripts/completo.mjs",
+    "test:api": "playwright test --project=api",
+    "test:tela": "playwright test --project=tela",
+    "test:limite": "playwright test --project=limite",
+    "test:extras": "playwright test --project=extras",
+    "ui": "node scripts/apresentar.mjs --ui",
+    "apresentacao": "node scripts/apresentar.mjs --project=api --project=tela --headed",
+    "video": "node scripts/apresentar.mjs --project=video",
+    "relatorio": "playwright show-report relatorio",
+    "tipos": "tsc -p ."
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^24.19.2",
+    "typescript": "~6.0.3"
+  }
+}
