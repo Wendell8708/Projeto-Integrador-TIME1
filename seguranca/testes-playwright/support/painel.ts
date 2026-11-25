@@ -13,9 +13,15 @@ import type { Page } from "@playwright/test";
 export const APRESENTACAO = process.env.APRESENTACAO === "1";
 const PAUSA_MS = APRESENTACAO ? 450 : 0;
 
-export type LinhaApi = { quem: string; metodo: string; rota: string; status: number };
+export type Rotulo = { texto: string; classe: "ok" | "recusado" | "limite" | "erro" };
+/** rotulo: quando o status sozinho engana (ex.: preflight de CORS responde 200, mas sem permissão). */
+export type LinhaApi = { quem: string; metodo: string; rota: string; status: number; rotulo?: Rotulo };
 
-export function rotuloStatus(status: number) {
+export function rotuloDaLinha(l: LinhaApi): Rotulo {
+  return l.rotulo ?? rotuloStatus(l.status);
+}
+
+export function rotuloStatus(status: number): Rotulo {
   if (status >= 200 && status < 300) return { texto: "aceito", classe: "ok" };
   if (status === 429) return { texto: "limite", classe: "limite" };
   if (status >= 500) return { texto: "erro", classe: "erro" };
@@ -23,7 +29,7 @@ export function rotuloStatus(status: number) {
 }
 
 export function textoDaLinha(l: LinhaApi) {
-  return `${l.quem.padEnd(8)} ${l.metodo.padEnd(6)} ${l.rota}  ->  ${l.status} ${rotuloStatus(l.status).texto}`;
+  return `${l.quem.padEnd(8)} ${l.metodo.padEnd(6)} ${l.rota}  ->  ${l.status} ${rotuloDaLinha(l).texto}`;
 }
 
 const ESTILO = `
@@ -33,7 +39,7 @@ const ESTILO = `
   header b { font: 600 20px "Segoe UI", system-ui, sans-serif; }
   header span { font: 15px "Segoe UI", system-ui, sans-serif; opacity: .9; }
   main { padding: 12px 24px; }
-  .linha { display: grid; grid-template-columns: 150px 70px 1fr 150px; gap: 12px; padding: 7px 10px; border-bottom: 1px solid #22382b; animation: entra .25s ease-out; }
+  .linha { display: grid; grid-template-columns: 150px 70px 1fr 240px; gap: 12px; padding: 7px 10px; border-bottom: 1px solid #22382b; animation: entra .25s ease-out; }
   .quem { color: #9fd3b0; } .metodo { color: #f0c674; }
   .st { text-align: right; font-weight: 700; }
   .ok .st { color: #7ab8ff; } .recusado .st { color: #5fd38a; } .limite .st { color: #f0c674; } .erro .st { color: #ff7a7a; }
@@ -53,7 +59,7 @@ export async function abrirPainel(page: Page, titulo: string, subtitulo: string)
 
 /** Acrescenta uma requisicao ao painel. */
 export async function linhaNoPainel(page: Page, l: LinhaApi) {
-  const { texto, classe } = rotuloStatus(l.status);
+  const { texto, classe } = rotuloDaLinha(l);
   await page.evaluate(({ l, texto, classe }) => {
     const div = document.createElement("div");
     div.className = `linha ${classe}`;
