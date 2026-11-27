@@ -35,6 +35,15 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
+def eh_conta_demonstracao(usuario):
+    """
+    Conta listada em MFA_CONTAS_DEMONSTRACAO (ex.: a conta compartilhada da
+    apresentacao). Nunca vale para a plataforma: admin sempre passa pelo 2FA.
+    """
+    email = (usuario.email or '').lower()
+    return bool(email) and email in settings.MFA_CONTAS_DEMONSTRACAO and not eh_plataforma(usuario)
+
+
 class LoginView(APIView):
     """
     Etapa 1 do login: e-mail e senha.
@@ -67,6 +76,10 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         usuario = serializer.validated_data['usuario']
+        if eh_conta_demonstracao(usuario):
+            # Excecao configurada no ambiente (MFA_CONTAS_DEMONSTRACAO): entra so com a senha.
+            dois_fatores.registrar_dispensa(request, usuario)
+            return Response(emitir_tokens(usuario))
         return Response({
             'mfa_required': True,
             'mfa_setup_required': not dois_fatores.tem_2fa_ativo(usuario),

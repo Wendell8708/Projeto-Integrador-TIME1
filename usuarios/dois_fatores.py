@@ -235,3 +235,13 @@ def registrar_recusa(request, usuario, motivo):
         getattr(usuario, 'email', None) or getattr(usuario, 'username', '?'),
         motivo, request.META.get('REMOTE_ADDR', '?') if request is not None else '-',
     )
+
+
+def registrar_dispensa(request, usuario):
+    """Login sem 2FA de uma conta de demonstracao: fica registrado, como as recusas."""
+    logger.warning(
+        '[%s] 2FA dispensado (conta de demonstracao): usuario=%s ip=%s',
+        settings.SECURITY_MISSION_CODE,
+        getattr(usuario, 'email', None) or getattr(usuario, 'username', '?'),
+        request.META.get('REMOTE_ADDR', '?') if request is not None else '-',
+    )

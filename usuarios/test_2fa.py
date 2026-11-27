@@ -180,3 +180,42 @@ class RevisaoDoTokenTemporarioTest(APITestCase):
         from usuarios.serializers import role_do_usuario
         self.usuario.groups.add(Group.objects.get(name='Motorista'), Group.objects.get(name='Vendedor'))
         self.assertEqual(role_do_usuario(self.usuario), 'seller')
+
+
+@override_settings(SECURITY_MISSION_CODE='TST123', MFA_CONTAS_DEMONSTRACAO=['demo@teste.local'])
+class ContaDemonstracaoTest(APITestCase):
+    """Conta listada em MFA_CONTAS_DEMONSTRACAO entra so com a senha; as outras continuam com 2FA."""
+
+    def setUp(self):
+        cache.clear()
+        User.objects.create_user('demo', 'demo@teste.local', SENHA)
+        User.objects.create_user('ana', 'ana@teste.local', SENHA)
+
+    def login(self, email):
+        return self.client.post('/api/v1/auth/login', {'email': email, 'password': SENHA})
+
+    def test_conta_de_demonstracao_entra_sem_2fa_e_vai_para_o_log(self):
+        with self.assertLogs('seguranca', level='WARNING') as log:
+            corpo = self.login('demo@teste.local').json()['data']
+        self.assertIn('access', corpo)
+        self.assertNotIn('mfa_token', corpo)
+        self.assertIn('[TST123] 2FA dispensado', log.output[0])
+
+    def test_outras_contas_continuam_com_2fa(self):
+        corpo = self.login('ana@teste.local').json()['data']
+        self.assertNotIn('access', corpo)
+        self.assertTrue(corpo['mfa_required'])
+
+    def test_senha_errada_continua_recusada(self):
+        resposta = self.client.post('/api/v1/auth/login', {'email': 'demo@teste.local', 'password': 'errada'})
+        self.assertEqual(resposta.status_code, 400)
+
+    def test_plataforma_nunca_e_dispensada(self):
+        User.objects.filter(email='demo@teste.local').update(is_superuser=True)
+        corpo = self.login('demo@teste.local').json()['data']
+        self.assertNotIn('access', corpo)
+
+    @override_settings(MFA_CONTAS_DEMONSTRACAO=[])
+    def test_sem_a_variavel_ninguem_e_dispensado(self):
+        corpo = self.login('demo@teste.local').json()['data']
+        self.assertNotIn('access', corpo)

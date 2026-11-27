@@ -200,6 +200,10 @@ MFA_TOKEN_MAX_AGE = config('MFA_TOKEN_MAX_AGE', default=300, cast=int)
 OTP_ISSUER = config('OTP_ISSUER', default='Caminho do Vale')
 # Chave (Fernet) que cifra os segredos TOTP no banco. Vazia = derivada da SECRET_KEY.
 OTP_ENCRYPTION_KEY = config('OTP_ENCRYPTION_KEY', default='')
+# Contas de DEMONSTRACAO que entram sem o 2FA (e-mails separados por virgula).
+# Vazia = ninguem e dispensado (padrao). Uso: apresentacao, com uma conta de leitura
+# compartilhada. Contas da plataforma (admin) nunca sao dispensadas. Esvazie depois.
+MFA_CONTAS_DEMONSTRACAO = [e.lower() for e in config('MFA_CONTAS_DEMONSTRACAO', default='', cast=Csv()) if e]
 
 # Chat com o Gemini (plano gratuito). A chave so existe no .env / Render.
 GEMINI_API_KEY = config('GEMINI_API_KEY', default='')
